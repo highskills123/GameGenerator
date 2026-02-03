@@ -4,9 +4,7 @@ Test script for Aibase API
 Tests the API endpoints without requiring actual OpenAI API key
 """
 
-import requests
 import json
-from unittest.mock import patch, Mock
 
 
 def test_api_health():

@@ -117,7 +117,7 @@ def translate():
             }), 400
         
         # Get or create translator with custom parameters if provided
-        if model or temperature is not None or max_tokens:
+        if model or temperature is not None or max_tokens is not None:
             trans = AibaseTranslator(
                 model=model,
                 temperature=temperature,

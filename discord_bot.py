@@ -92,13 +92,29 @@ async def generate_code(ctx, language: str = 'python', *, description: str = Non
                 # Split into multiple messages or send as file
                 await ctx.send(f"✅ Generated {lang.upper()} code (sent as file due to length):")
                 
-                # Create a file with the code
-                filename = f"code.{_get_file_extension(lang)}"
-                with open(filename, 'w') as f:
-                    f.write(code)
+                # Create a unique temporary file with the code
+                import tempfile
+                import time
                 
-                await ctx.send(file=discord.File(filename))
-                os.remove(filename)
+                # Create temp file with unique name
+                filename = f"code_{ctx.author.id}_{int(time.time())}.{_get_file_extension(lang)}"
+                filepath = None
+                
+                try:
+                    # Write code to temp file
+                    with tempfile.NamedTemporaryFile(mode='w', suffix=f'.{_get_file_extension(lang)}', delete=False) as f:
+                        f.write(code)
+                        filepath = f.name
+                    
+                    # Send the file
+                    await ctx.send(file=discord.File(filepath, filename=filename))
+                finally:
+                    # Always clean up the temp file
+                    if filepath and os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except Exception as e:
+                            print(f"Warning: Failed to delete temp file {filepath}: {e}")
             else:
                 await ctx.send(f"✅ Generated {lang.upper()} code:")
                 await ctx.send(f"```{lang}\n{code}\n```")
