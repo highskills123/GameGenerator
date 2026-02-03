@@ -6,6 +6,7 @@ Note: These tests require an OpenAI API key to run
 
 import os
 import sys
+from unittest.mock import Mock, patch
 from aibase import AibaseTranslator
 
 
@@ -104,6 +105,78 @@ def test_invalid_language():
         return False
 
 
+def test_translation_with_mock():
+    """Test translation workflow with mocked API response."""
+    print("\nTest 5: Translation with Mocked API")
+    print("-" * 50)
+    
+    try:
+        # Create a mock response
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_message = Mock()
+        mock_message.content = "def hello_world():\n    print('Hello, World!')"
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        
+        # Patch the OpenAI client
+        with patch('aibase.OpenAI') as mock_openai:
+            mock_client = Mock()
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_openai.return_value = mock_client
+            
+            # Test with a fake API key
+            translator = AibaseTranslator(api_key='fake-key-for-testing')
+            result = translator.translate("create a hello world function", "python")
+            
+            # Verify the result
+            assert "hello_world" in result.lower() or "hello" in result.lower()
+            assert "print" in result.lower() or "def" in result.lower()
+            
+            # Verify the API was called correctly
+            assert mock_client.chat.completions.create.called
+            call_args = mock_client.chat.completions.create.call_args
+            assert call_args[1]['model'] == AibaseTranslator.DEFAULT_MODEL
+            assert call_args[1]['temperature'] == AibaseTranslator.DEFAULT_TEMPERATURE
+            
+            print(f"✓ Translation workflow completed successfully")
+            print(f"  Generated: {result[:50]}...")
+            return True
+            
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_custom_parameters():
+    """Test custom model parameters."""
+    print("\nTest 6: Custom Parameters")
+    print("-" * 50)
+    
+    try:
+        # Test with custom parameters (without API key, just initialization)
+        with patch('aibase.OpenAI'):
+            translator = AibaseTranslator(
+                api_key='fake-key',
+                model='gpt-4',
+                temperature=0.5,
+                max_tokens=1000
+            )
+            
+            assert translator.model == 'gpt-4'
+            assert translator.temperature == 0.5
+            assert translator.max_tokens == 1000
+            
+            print("✓ Custom parameters set correctly")
+            return True
+            
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
@@ -115,7 +188,9 @@ def run_all_tests():
         test_initialization,
         test_supported_languages,
         test_translation_mock,
-        test_invalid_language
+        test_invalid_language,
+        test_translation_with_mock,
+        test_custom_parameters
     ]
     
     results = []

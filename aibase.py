@@ -20,6 +20,11 @@ load_dotenv()
 class AibaseTranslator:
     """Main class for translating natural language to code."""
     
+    # Default model and generation parameters
+    DEFAULT_MODEL = "gpt-3.5-turbo"
+    DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_MAX_TOKENS = 2000
+    
     SUPPORTED_LANGUAGES = {
         'python': 'Python',
         'javascript': 'JavaScript',
@@ -35,8 +40,16 @@ class AibaseTranslator:
         'kotlin': 'Kotlin'
     }
     
-    def __init__(self, api_key=None):
-        """Initialize the translator with OpenAI API key."""
+    def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None):
+        """
+        Initialize the translator with OpenAI API key.
+        
+        Args:
+            api_key (str): OpenAI API key (defaults to OPENAI_API_KEY env var)
+            model (str): Model to use (defaults to gpt-3.5-turbo)
+            temperature (float): Temperature for generation (defaults to 0.7)
+            max_tokens (int): Maximum tokens to generate (defaults to 2000)
+        """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not self.api_key:
             raise ValueError(
@@ -44,6 +57,9 @@ class AibaseTranslator:
                 "or pass it to the constructor."
             )
         self.client = OpenAI(api_key=self.api_key)
+        self.model = model or self.DEFAULT_MODEL
+        self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
+        self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
     
     def translate(self, description, target_language='python', include_comments=True):
         """
@@ -80,13 +96,13 @@ class AibaseTranslator:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=2000
+                temperature=self.temperature,
+                max_tokens=self.max_tokens
             )
             
             generated_code = response.choices[0].message.content.strip()
@@ -187,11 +203,29 @@ Examples:
         '-o', '--output',
         help='Output file path to save generated code'
     )
+    parser.add_argument(
+        '--model',
+        help=f'OpenAI model to use (default: {AibaseTranslator.DEFAULT_MODEL})'
+    )
+    parser.add_argument(
+        '--temperature',
+        type=float,
+        help=f'Temperature for generation 0.0-1.0 (default: {AibaseTranslator.DEFAULT_TEMPERATURE})'
+    )
+    parser.add_argument(
+        '--max-tokens',
+        type=int,
+        help=f'Maximum tokens to generate (default: {AibaseTranslator.DEFAULT_MAX_TOKENS})'
+    )
     
     args = parser.parse_args()
     
     try:
-        translator = AibaseTranslator()
+        translator = AibaseTranslator(
+            model=args.model,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens
+        )
         
         if args.description:
             # Direct translation mode

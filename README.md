@@ -13,6 +13,8 @@ Aibase is an intelligent code generator that translates natural language descrip
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
 - ⚡ **Fast & Efficient**: Powered by OpenAI's GPT models
+- 🌐 **REST API**: Full-featured API for integrations
+- 🤖 **Bot-Ready**: Easy to integrate with Discord, Telegram, Slack, and other platforms
 
 ## Supported Languages
 
@@ -118,6 +120,69 @@ python examples.py
 - **Code Translation**: Convert logic from one language to another
 - **Documentation**: Generate code examples from specifications
 - **Problem Solving**: Get implementation ideas for complex problems
+- **Bot Development**: Integrate code generation into Discord, Telegram, or Slack bots
+- **API Integration**: Use the REST API in your applications and services
+
+## API Server
+
+Aibase includes a REST API server for easy integration:
+
+```bash
+# Start the API server
+python api_server.py
+
+# Custom host and port
+python api_server.py --host 0.0.0.0 --port 8080
+```
+
+### API Endpoints
+
+- `GET /` - API information
+- `GET /api/health` - Health check
+- `GET /api/languages` - List supported languages
+- `POST /api/translate` - Translate natural language to code
+
+### API Example
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:5000/api/translate",
+    json={
+        "description": "create a function that reverses a string",
+        "language": "python"
+    }
+)
+
+result = response.json()
+if result["success"]:
+    print(result["code"])
+```
+
+See [API.md](API.md) for complete API documentation.
+
+## Building Bots
+
+Aibase is perfect for building code generation bots! We include a Discord bot example:
+
+```bash
+# Set up Discord bot token in .env
+DISCORD_BOT_TOKEN=your_token_here
+
+# Start the API server
+python api_server.py
+
+# In another terminal, start the bot
+python discord_bot.py
+```
+
+The bot supports commands like:
+- `!code create a function that checks if a number is prime`
+- `!code javascript create an async fetch function`
+- `!languages` - List supported languages
+
+See [discord_bot.py](discord_bot.py) for the implementation and [API.md](API.md) for examples with Telegram and Slack.
 
 ## Requirements
 
