@@ -37,7 +37,12 @@ class AibaseTranslator:
         'php': 'PHP',
         'ruby': 'Ruby',
         'swift': 'Swift',
-        'kotlin': 'Kotlin'
+        'kotlin': 'Kotlin',
+        'dart': 'Dart',
+        'flutter': 'Flutter/Dart',
+        'flutter-widget': 'Flutter Widget',
+        'react-native': 'React Native',
+        'react-native-component': 'React Native Component'
     }
     
     def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None):
