@@ -1,14 +1,21 @@
 # Aibase
 
+![Flutter](https://img.shields.io/badge/Flutter-02569B?style=flat&logo=flutter&logoColor=white)
+![React Native](https://img.shields.io/badge/React_Native-20232A?style=flat&logo=react&logoColor=61DAFB)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+
 AI-powered Natural Language to Code Translator - Transform your ideas into working code instantly!
 
 ## Overview
 
-Aibase is an intelligent code generator that translates natural language descriptions into working code in multiple programming languages. Simply describe what you want in plain English, and Aibase will generate clean, efficient code for you.
+Aibase is an intelligent code generator that translates natural language descriptions into working code in multiple programming languages and mobile frameworks. Simply describe what you want in plain English, and Aibase will generate clean, efficient code for you.
 
 ## Features
 
 - 🚀 **Multi-Language Support**: Generate code in Python, JavaScript, Java, C++, Go, Rust, TypeScript, and more
+- 📱 **Mobile Framework Support**: Generate Flutter widgets and React Native components
 - 💬 **Natural Language Input**: Describe what you want in plain English
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
@@ -18,6 +25,7 @@ Aibase is an intelligent code generator that translates natural language descrip
 
 ## Supported Languages
 
+### General Purpose
 - Python
 - JavaScript
 - TypeScript
@@ -30,6 +38,10 @@ Aibase is an intelligent code generator that translates natural language descrip
 - Ruby
 - Swift
 - Kotlin
+
+### Mobile Frameworks
+- **Flutter/Dart**: Generate complete Flutter widgets (StatelessWidget, StatefulWidget)
+- **React Native**: Generate modern React Native components with hooks
 
 ## Installation
 
@@ -98,13 +110,96 @@ code = translator.translate(
 print(code)
 ```
 
+### Mobile Framework Quick Start
+
+#### Generate Flutter Widgets
+
+```bash
+# Generate a Flutter counter widget
+python aibase.py -d "create a Flutter counter StatefulWidget with increment and decrement buttons" -l flutter-widget -o counter.dart
+
+# Generate a Flutter login form
+python aibase.py -d "create a Flutter login form with email and password validation" -l flutter-widget -o login.dart
+
+# Generate a Flutter list view
+python aibase.py -d "create a Flutter ListView displaying products with images and titles" -l flutter-widget -o product_list.dart
+```
+
+#### Generate React Native Components
+
+```bash
+# Generate a React Native component
+python aibase.py -d "create a React Native button component with TouchableOpacity and custom styling" -l react-native-component -o Button.js
+
+# Generate a React Native screen
+python aibase.py -d "create a React Native profile screen with avatar and user info using hooks" -l react-native-component -o ProfileScreen.js
+
+# Generate a React Native list
+python aibase.py -d "create a React Native FlatList displaying user posts" -l react-native-component -o PostList.js
+```
+
+#### Using the API for Mobile
+
+```python
+import requests
+
+# Generate Flutter widget via API
+response = requests.post(
+    "http://localhost:5000/api/translate",
+    json={
+        "description": "create a Flutter card widget with image and title",
+        "language": "flutter-widget"
+    }
+)
+
+code = response.json()["code"]
+with open("card_widget.dart", "w") as f:
+    f.write(code)
+```
+
 ## Examples
+
+### Code Examples
 
 Check out `examples.py` for more usage examples:
 
 ```bash
 python examples.py
 ```
+
+### Mobile Framework Examples
+
+Explore comprehensive examples:
+
+- **Flutter Examples**: [`examples/flutter/`](examples/flutter/) - 5+ complete Flutter widget examples
+- **React Native Examples**: [`examples/react-native/`](examples/react-native/) - 5+ complete React Native component examples
+
+Each example includes:
+- Complete, runnable code
+- Generation commands
+- Usage instructions
+- Feature descriptions
+
+## Documentation
+
+### Getting Started Guides
+- 📱 [Flutter Getting Started](docs/flutter-getting-started.md) - Complete guide for generating Flutter code
+- ⚛️ [React Native Getting Started](docs/react-native-getting-started.md) - Complete guide for generating React Native code
+- ⚙️ [Configuration Guide](docs/configuration-guide.md) - Detailed configuration options
+- 📚 [Best Practices](docs/best-practices.md) - Tips for generating high-quality code
+
+### API Documentation
+- 🌐 [API Usage for Mobile Frameworks](docs/api-mobile-frameworks.md) - REST API examples and integration
+
+### Developer Documentation
+- 🏗️ [Architecture Overview](docs/architecture-overview.md) - System architecture and design
+- 🔧 [Extending Generators](docs/extending-generators.md) - How to add custom generators
+- 🤝 [Contributing Guide](docs/contributing-mobile.md) - How to contribute
+
+### Tutorials
+- 🎓 [Generate Your First Flutter Widget](docs/tutorials/flutter-first-widget.md) - Step-by-step tutorial
+- 🎓 [Generate Your First React Native Component](docs/tutorials/react-native-first-component.md) - Step-by-step tutorial
+- 🔍 [Troubleshooting Guide](docs/tutorials/troubleshooting.md) - Common issues and solutions
 
 ## How It Works
 
@@ -116,12 +211,15 @@ python examples.py
 ## Use Cases
 
 - **Rapid Prototyping**: Quickly generate boilerplate code and functions
-- **Learning**: Understand how to implement algorithms in different languages
+- **Mobile App Development**: Generate Flutter widgets and React Native components instantly
+- **Learning**: Understand how to implement algorithms and UI patterns in different languages
 - **Code Translation**: Convert logic from one language to another
 - **Documentation**: Generate code examples from specifications
 - **Problem Solving**: Get implementation ideas for complex problems
 - **Bot Development**: Integrate code generation into Discord, Telegram, or Slack bots
 - **API Integration**: Use the REST API in your applications and services
+- **UI Development**: Generate mobile screens, forms, lists, and navigation flows
+- **Cross-Platform Development**: Create components for both Flutter and React Native
 
 ## API Server
 
