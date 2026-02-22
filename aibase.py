@@ -43,7 +43,13 @@ class AibaseTranslator:
         'php': 'PHP',
         'ruby': 'Ruby',
         'swift': 'Swift',
-        'kotlin': 'Kotlin'
+        'kotlin': 'Kotlin',
+        'flame': 'Flame (Flutter Game Engine)',
+        'flame-game': 'Flame Complete Game',
+        'flame-component': 'Flame Game Component',
+        'game-asset-sprite': 'Game Sprite Asset Code',
+        'game-asset-animation': 'Game Animation Asset Code',
+        'game-tilemap': 'Game Tilemap Code',
     }
 
     @staticmethod
@@ -66,19 +72,98 @@ class AibaseTranslator:
         self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
         self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
     
-    def _build_prompts(self, description, lang_name, include_comments):
+    def _build_prompts(self, description, lang_name, include_comments, language_key=''):
         """Build system and user prompts for code generation."""
-        system_prompt = (
-            f"You are an expert programmer that translates natural language descriptions "
-            f"into clean, efficient, and well-structured {lang_name} code. "
-            f"Provide only the code without additional explanations unless specifically asked. "
-            f"{'Include helpful comments to explain the code.' if include_comments else 'Minimize comments.'}"
-        )
-        user_prompt = (
-            f"Convert the following natural language description into {lang_name} code:\n\n"
-            f"{description}\n\n"
-            f"Provide complete, working code that can be run or used directly."
-        )
+        key = language_key.lower()
+
+        # System prompt: specialized for Flame or game-asset, default otherwise
+        if key.startswith('flame'):
+            system_prompt = (
+                f"You are an expert Flutter and Flame game engine developer. "
+                f"Generate clean, efficient, and well-structured {lang_name} code. "
+                f"Use Flame best practices, proper game component structure, and Flutter conventions. "
+                f"Include necessary imports (flame, flutter packages). "
+                f"{'Include helpful comments to explain game logic and components.' if include_comments else 'Minimize comments.'}"
+            )
+        elif key.startswith('game-'):
+            system_prompt = (
+                f"You are an expert game developer specializing in {lang_name}. "
+                f"Generate clean, efficient code for game asset management and rendering. "
+                f"Focus on performance, reusability, and proper asset loading patterns. "
+                f"{'Include helpful comments to explain asset handling.' if include_comments else 'Minimize comments.'}"
+            )
+        else:
+            system_prompt = (
+                f"You are an expert programmer that translates natural language descriptions "
+                f"into clean, efficient, and well-structured {lang_name} code. "
+                f"Provide only the code without additional explanations unless specifically asked. "
+                f"{'Include helpful comments to explain the code.' if include_comments else 'Minimize comments.'}"
+            )
+
+        # User prompt: specialized per language key
+        if key == 'flame-game':
+            user_prompt = (
+                f"Create a complete Flame game project for: {description}\n\n"
+                f"Include:\n"
+                f"- Main game class extending FlameGame\n"
+                f"- Game components and entities\n"
+                f"- Proper initialization and lifecycle methods\n"
+                f"- Game loop integration\n"
+                f"Provide complete, working code that can be integrated into a Flutter app."
+            )
+        elif key == 'flame-component':
+            user_prompt = (
+                f"Create Flame game components for: {description}\n\n"
+                f"Include:\n"
+                f"- Component classes extending PositionComponent or SpriteComponent\n"
+                f"- Update and render methods\n"
+                f"- Collision detection if needed\n"
+                f"- Proper component lifecycle\n"
+                f"Provide complete, working code."
+            )
+        elif key == 'flame':
+            user_prompt = (
+                f"Create Flame game code for: {description}\n\n"
+                f"Use Flame framework and Flutter best practices.\n"
+                f"Include necessary imports and proper game structure.\n"
+                f"Provide complete, working code."
+            )
+        elif key == 'game-asset-sprite':
+            user_prompt = (
+                f"Create sprite asset management code for: {description}\n\n"
+                f"Include:\n"
+                f"- Sprite loading and caching\n"
+                f"- Sprite sheet handling if needed\n"
+                f"- Animation frame management\n"
+                f"- Efficient rendering code\n"
+                f"Provide complete, working code."
+            )
+        elif key == 'game-asset-animation':
+            user_prompt = (
+                f"Create animation asset code for: {description}\n\n"
+                f"Include:\n"
+                f"- Animation state management\n"
+                f"- Frame interpolation\n"
+                f"- Animation controllers\n"
+                f"- Smooth transitions\n"
+                f"Provide complete, working code."
+            )
+        elif key == 'game-tilemap':
+            user_prompt = (
+                f"Create tilemap generation and rendering code for: {description}\n\n"
+                f"Include:\n"
+                f"- Tilemap data structure\n"
+                f"- Tile rendering logic\n"
+                f"- Map parsing and loading\n"
+                f"- Collision detection for tiles\n"
+                f"Provide complete, working code."
+            )
+        else:
+            user_prompt = (
+                f"Convert the following natural language description into {lang_name} code:\n\n"
+                f"{description}\n\n"
+                f"Provide complete, working code that can be run or used directly."
+            )
         return system_prompt, user_prompt
 
     @staticmethod
@@ -133,7 +218,7 @@ class AibaseTranslator:
             )
 
         lang_name = self.SUPPORTED_LANGUAGES[target_language.lower()]
-        system_prompt, user_prompt = self._build_prompts(description, lang_name, include_comments)
+        system_prompt, user_prompt = self._build_prompts(description, lang_name, include_comments, target_language.lower())
         return self._strip_code_fences(self._generate_ollama(system_prompt, user_prompt))
     
     def translate_interactive(self):

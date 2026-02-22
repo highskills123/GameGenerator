@@ -158,6 +158,65 @@ def test_code_fence_stripping():
         return False
 
 
+def test_game_language_targets():
+    """Test that new Flame/game-asset language targets are present."""
+    print("\nTest 8: Flame/game-asset language targets")
+    print("-" * 50)
+
+    try:
+        languages = AibaseTranslator.SUPPORTED_LANGUAGES
+        for key in ('flame', 'flame-game', 'flame-component',
+                    'game-asset-sprite', 'game-asset-animation', 'game-tilemap'):
+            assert key in languages, f"Missing language key: {key}"
+        print(f"✓ All 6 new game/Flame language targets present")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_flame_prompt_selection():
+    """Test that _build_prompts returns Flame-specific prompts for flame keys."""
+    print("\nTest 9: Flame prompt selection")
+    print("-" * 50)
+
+    try:
+        translator = AibaseTranslator()
+        for key in ('flame', 'flame-game', 'flame-component'):
+            lang_name = AibaseTranslator.SUPPORTED_LANGUAGES[key]
+            sys_p, usr_p = translator._build_prompts("test desc", lang_name, True, key)
+            assert 'Flame' in sys_p or 'Flutter' in sys_p, \
+                f"Expected Flame/Flutter in system prompt for {key}"
+            assert 'Flame' in usr_p or 'flame' in usr_p.lower(), \
+                f"Expected flame content in user prompt for {key}"
+        print("✓ Flame prompt selection works correctly")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_game_asset_prompt_selection():
+    """Test that _build_prompts returns game-asset-specific prompts for game- keys."""
+    print("\nTest 10: Game-asset prompt selection")
+    print("-" * 50)
+
+    try:
+        translator = AibaseTranslator()
+        for key in ('game-asset-sprite', 'game-asset-animation', 'game-tilemap'):
+            lang_name = AibaseTranslator.SUPPORTED_LANGUAGES[key]
+            sys_p, usr_p = translator._build_prompts("test desc", lang_name, True, key)
+            assert 'game' in sys_p.lower() or 'asset' in sys_p.lower(), \
+                f"Expected game/asset in system prompt for {key}"
+            assert 'code' in usr_p.lower(), \
+                f"Expected 'code' in user prompt for {key}"
+        print("✓ Game-asset prompt selection works correctly")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
@@ -173,6 +232,9 @@ def run_all_tests():
         test_translation_with_mock_ollama,
         test_custom_parameters,
         test_code_fence_stripping,
+        test_game_language_targets,
+        test_flame_prompt_selection,
+        test_game_asset_prompt_selection,
     ]
 
     results = []
