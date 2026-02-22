@@ -75,6 +75,7 @@ The startup output shows you exactly which URLs to use:
   This computer:  http://localhost:5000/
   Local network:  http://192.168.1.42:5000/
   (anyone on your Wi-Fi/LAN can use this URL)
+  Public URL:     (ngrok not active — run with --ngrok to enable)
 ```
 
 - **Same computer** → `http://localhost:5000/`
@@ -90,15 +91,26 @@ Once the page loads:
 
 ### Sharing over the internet
 
-`localhost` is only reachable from **your own machine**. To share with people outside your network:
+`localhost` is only reachable from **your own machine**. The easiest way to share Aibase with anyone, anywhere is the built-in `--ngrok` flag:
 
-**Option A — ngrok (easiest, free tier available):**
+**Option A — built-in ngrok tunnel (easiest):**
 ```bash
-# 1. Install ngrok: https://ngrok.com/download
-# 2. In a second terminal while api_server.py is running:
-ngrok http 5000
-# ngrok prints a public URL like https://abc123.ngrok.io — share that link
+# Install ngrok support (one-time)
+pip install pyngrok
+
+# Start server with automatic public tunnel
+python api_server.py --ngrok
 ```
+
+The startup banner shows a shareable public link:
+
+```
+  🌍 Public URL:   https://abc123.ngrok-free.app
+  Share this link with anyone — no router setup needed!
+```
+
+> **Optional:** Sign up free at https://ngrok.com and add `NGROK_AUTHTOKEN=your_token` to
+> `.env` to remove the 2-hour session limit.
 
 **Option B — router port forwarding:**
 1. Log in to your router's admin page (usually `http://192.168.1.1`)

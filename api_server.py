@@ -190,6 +190,35 @@ def get_local_ip():
         return None
 
 
+def start_ngrok_tunnel(port):
+    """
+    Open a public ngrok HTTPS tunnel to *port* using pyngrok.
+
+    Returns the public URL string on success, or None with a printed
+    error message if pyngrok is not installed or the tunnel fails.
+    """
+    try:
+        from pyngrok import ngrok, conf
+
+        # Use authtoken from environment if provided
+        authtoken = os.getenv('NGROK_AUTHTOKEN')
+        if authtoken:
+            conf.get_default().auth_token = authtoken
+
+        tunnel = ngrok.connect(port, "http", bind_tls=True)
+        return tunnel.public_url
+    except ImportError:
+        print(
+            "\n  ⚠  pyngrok is not installed. Run:\n"
+            "       pip install pyngrok\n"
+            "  then restart the server.\n"
+        )
+        return None
+    except Exception as exc:
+        print(f"\n  ⚠  Could not start ngrok tunnel: {exc}\n")
+        return None
+
+
 def main():
     """Run the API server."""
     import argparse
@@ -213,7 +242,16 @@ def main():
         action='store_true',
         help='Run in debug mode'
     )
-    
+    parser.add_argument(
+        '--ngrok',
+        action='store_true',
+        help=(
+            'Open a public ngrok tunnel so anyone on the internet can access '
+            'the server. Requires pyngrok (pip install pyngrok). Optionally '
+            'set NGROK_AUTHTOKEN in .env for longer sessions.'
+        )
+    )
+
     args = parser.parse_args()
 
     local_ip = get_local_ip()
@@ -222,6 +260,20 @@ def main():
         if local_ip else
         "  Local network:  (could not detect local IP)"
     )
+
+    # Start ngrok tunnel before Flask so the URL is ready to print
+    ngrok_url = None
+    if args.ngrok:
+        print("  Starting ngrok tunnel…", flush=True)
+        ngrok_url = start_ngrok_tunnel(args.port)
+
+    if ngrok_url:
+        ngrok_line = (
+            f"  🌍 Public URL:   {ngrok_url}\n"
+            f"  Share this link with anyone — no router setup needed!"
+        )
+    else:
+        ngrok_line = "  Public URL:     (ngrok not active — run with --ngrok to enable)"
 
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
@@ -232,10 +284,7 @@ Server running!  Open one of these URLs in a browser:
 
   This computer:  http://localhost:{args.port}/
 {lan_line}
-
-  ⚠  For internet access (outside your network) you need either:
-     • Port-forward port {args.port} on your router, OR
-     • Use a tunnel:  ngrok http {args.port}
+{ngrok_line}
 
 Debug mode: {args.debug}
 

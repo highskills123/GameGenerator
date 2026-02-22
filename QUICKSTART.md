@@ -34,7 +34,34 @@ After running `python api_server.py`, look at the startup output:
 |---|---|
 | You (same computer) | `http://localhost:5000/` |
 | Friends on the same Wi-Fi/LAN | `http://<local IP shown above>:5000/` |
-| Anyone on the internet | Use ngrok: `ngrok http 5000` (see README) |
+| Anyone on the internet | Start with `--ngrok` flag (see below) |
+
+## Sharing with friends over the internet
+
+The easiest way to let a friend access your Aibase from anywhere is the built-in `--ngrok` flag:
+
+```bash
+# Install ngrok support (one-time)
+pip install pyngrok
+
+# Start the server with a public tunnel
+python api_server.py --ngrok
+```
+
+The startup output will show a link you can send to your friend:
+
+```
+  🌍 Public URL:   https://abc123.ngrok-free.app
+  Share this link with anyone — no router setup needed!
+```
+
+That's it — your friend can open the link in any browser, including on their phone.
+
+> **Optional:** Create a free account at https://ngrok.com and add your authtoken to `.env`:
+> ```
+> NGROK_AUTHTOKEN=your_token_here
+> ```
+> This removes the 2-hour session limit on the free tier.
 
 ## Usage Examples
 
