@@ -89,9 +89,11 @@ def health():
 @app.route('/api/languages', methods=['GET'])
 def get_languages():
     """Get list of supported programming languages."""
+    langs = AibaseTranslator.SUPPORTED_LANGUAGES
     return jsonify({
-        'languages': list(AibaseTranslator.SUPPORTED_LANGUAGES.keys()),
-        'count': len(AibaseTranslator.SUPPORTED_LANGUAGES)
+        'languages': list(langs.keys()),
+        'names': langs,
+        'count': len(langs)
     })
 
 
