@@ -18,6 +18,19 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+
+@app.after_request
+def skip_ngrok_browser_warning(response):
+    """Tell ngrok to skip the browser interstitial warning page.
+
+    Without this, free-tier ngrok tunnels show a warning page to browser
+    visitors before redirecting them to the actual site.  Adding this header
+    to every response bypasses that page so friends can open the shared URL
+    directly.
+    """
+    response.headers['ngrok-skip-browser-warning'] = '1'
+    return response
+
 # Initialize translator
 translator = None
 
