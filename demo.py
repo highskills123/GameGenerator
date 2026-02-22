@@ -202,9 +202,9 @@ For more examples and details, see:
 - QUICKSTART.md - Quick start guide
 - examples.py - Code examples
 
-Supported languages (21):
+Supported languages (23):
 Python, JavaScript, TypeScript, Java, C++, C#, Go, Rust, PHP, Ruby, Swift, Kotlin,
-Flutter/Dart, Dart, React Native,
+Flutter/Dart, Flutter Widget, Dart, React Native, React Native Component,
 Flame, Flame Complete Game, Flame Game Component,
 Game Sprite Asset, Game Animation Asset, Game Tilemap
 """)

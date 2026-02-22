@@ -247,9 +247,11 @@ class AibaseTranslator:
         'game-asset-sprite': 'Game Sprite Asset Code',
         'game-asset-animation': 'Game Animation Asset Code',
         'game-tilemap': 'Game Tilemap Code',
-        'flutter': 'Flutter/Dart',
         'dart': 'Dart',
+        'flutter': 'Flutter/Dart',
+        'flutter-widget': 'Flutter Widget',
         'react-native': 'React Native',
+        'react-native-component': 'React Native Component',
     }
 
     @staticmethod
