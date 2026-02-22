@@ -12,7 +12,7 @@ Aibase is an intelligent code generator that translates natural language descrip
 - 💬 **Natural Language Input**: Describe what you want in plain English
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
-- ⚡ **Fast & Efficient**: Powered by OpenAI's GPT models
+- ⚡ **Fast & Efficient**: Powered by local Ollama models (free, no API key required) or OpenAI GPT models (optional)
 - 🌐 **REST API**: Full-featured API for integrations
 - 🤖 **Bot-Ready**: Easy to integrate with Discord, Telegram, Slack, and other platforms
 
@@ -44,11 +44,19 @@ cd Aibase
 pip install -r requirements.txt
 ```
 
-3. Set up your OpenAI API key:
+3. Install and start Ollama (free, no API key required):
+```bash
+# Install Ollama from https://ollama.com
+# Then pull the default model:
+ollama pull qwen2.5-coder:7b
+```
+
+4. (Optional) Copy `.env.example` to `.env` to customise settings:
 ```bash
 cp .env.example .env
-# Edit .env and add your OpenAI API key
 ```
+
+> **OpenAI users**: Set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in `.env` to use OpenAI instead.
 
 ## Usage
 
@@ -109,7 +117,7 @@ python examples.py
 ## How It Works
 
 1. **Input**: You provide a natural language description of what you want
-2. **Processing**: Aibase uses OpenAI's GPT models to understand your requirements
+2. **Processing**: Aibase sends your description to a local Ollama model (default) or OpenAI GPT (optional)
 3. **Generation**: The AI generates clean, efficient code in your target language
 4. **Output**: You receive production-ready code with helpful comments
 
@@ -187,15 +195,23 @@ See [discord_bot.py](discord_bot.py) for the implementation and [API.md](API.md)
 ## Requirements
 
 - Python 3.7+
-- OpenAI API key
+- [Ollama](https://ollama.com) running locally with `qwen2.5-coder:7b` pulled (default, free)
+- **Or** an OpenAI API key (set `AIBASE_PROVIDER=openai`)
 - Dependencies listed in `requirements.txt`
 
 ## Configuration
 
-Create a `.env` file with your OpenAI API key:
+Copy `.env.example` to `.env` and adjust as needed:
 
 ```
-OPENAI_API_KEY=your_openai_api_key_here
+# Use Ollama (default, free)
+AIBASE_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5-coder:7b
+
+# Or use OpenAI (optional)
+# AIBASE_PROVIDER=openai
+# OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 ## Contributing
@@ -212,7 +228,7 @@ This project is open source and available under the MIT License.
 
 ## Disclaimer
 
-This tool uses OpenAI's API and requires a valid API key. API usage is subject to OpenAI's pricing and terms of service.
+By default, Aibase runs fully locally using [Ollama](https://ollama.com) with no API key required. When using the optional OpenAI provider (`AIBASE_PROVIDER=openai`), API usage is subject to OpenAI's pricing and terms of service.
 
 ## Support
 

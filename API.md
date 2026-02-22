@@ -12,7 +12,9 @@ http://localhost:5000
 
 ## Authentication
 
-Currently, authentication is handled via the OpenAI API key set in the `.env` file on the server side.
+By default, the API server uses a local Ollama model and requires no API key. Simply ensure Ollama is running and the model is available on the server machine.
+
+To use OpenAI instead, set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in the server's `.env` file.
 
 ## Endpoints
 
@@ -89,7 +91,7 @@ Generate code from a natural language description.
   "description": "create a function that checks if a number is prime",
   "language": "python",
   "include_comments": true,
-  "model": "gpt-3.5-turbo",
+  "model": "qwen2.5-coder:7b",
   "temperature": 0.7,
   "max_tokens": 2000
 }
@@ -102,7 +104,7 @@ Generate code from a natural language description.
 | description | string | Yes | - | Natural language description of the code to generate |
 | language | string | No | "python" | Target programming language |
 | include_comments | boolean | No | true | Whether to include comments in generated code |
-| model | string | No | "gpt-3.5-turbo" | OpenAI model to use |
+| model | string | No | provider default | Model to use (e.g. `qwen2.5-coder:7b` for Ollama, `gpt-3.5-turbo` for OpenAI) |
 | temperature | float | No | 0.7 | Temperature for generation (0.0-1.0) |
 | max_tokens | integer | No | 2000 | Maximum tokens to generate |
 
@@ -210,7 +212,7 @@ python api_server.py --debug
 
 ## Rate Limiting
 
-Currently, there are no rate limits on the API. However, you are subject to OpenAI's API rate limits based on your API key's tier.
+Currently, there are no rate limits on the API. When using the Ollama provider (default), generation speed depends on your local hardware. When using `AIBASE_PROVIDER=openai`, OpenAI's API rate limits apply based on your API key's tier.
 
 ## Error Handling
 
@@ -226,7 +228,8 @@ All errors return a JSON response with the following format:
 Common error scenarios:
 - Missing or invalid description
 - Unsupported programming language
-- OpenAI API errors (rate limits, invalid key, etc.)
+- Ollama not running or model not pulled (default provider)
+- OpenAI API errors when using `AIBASE_PROVIDER=openai` (rate limits, invalid key, etc.)
 
 ## Building a Bot with Aibase API
 

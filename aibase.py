@@ -6,8 +6,8 @@ A tool that translates natural language descriptions into working code.
 
 import os
 import sys
+import requests
 from dotenv import load_dotenv
-from openai import OpenAI
 from colorama import Fore, Style, init
 
 # Initialize colorama for colored terminal output
@@ -19,12 +19,20 @@ load_dotenv()
 
 class AibaseTranslator:
     """Main class for translating natural language to code."""
-    
+
+    # Provider constants
+    PROVIDER_OLLAMA = 'ollama'
+    PROVIDER_OPENAI = 'openai'
+
     # Default model and generation parameters
     DEFAULT_MODEL = "gpt-3.5-turbo"
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_MAX_TOKENS = 2000
-    
+
+    # Ollama defaults
+    DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
+    DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
+
     SUPPORTED_LANGUAGES = {
         'python': 'Python',
         'javascript': 'JavaScript',
@@ -39,61 +47,88 @@ class AibaseTranslator:
         'swift': 'Swift',
         'kotlin': 'Kotlin'
     }
-    
-    def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None):
+
+    def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None, provider=None):
         """
-        Initialize the translator with OpenAI API key.
-        
+        Initialize the translator.
+
         Args:
-            api_key (str): OpenAI API key (defaults to OPENAI_API_KEY env var)
-            model (str): Model to use (defaults to gpt-3.5-turbo)
+            api_key (str): OpenAI API key (only required when provider is 'openai')
+            model (str): Model to use. Defaults to provider-specific default.
             temperature (float): Temperature for generation (defaults to 0.7)
             max_tokens (int): Maximum tokens to generate (defaults to 2000)
+            provider (str): AI provider to use ('ollama' or 'openai').
+                            Defaults to AIBASE_PROVIDER env var or 'ollama'.
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        if not self.api_key:
-            raise ValueError(
-                "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
-                "or pass it to the constructor."
-            )
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = model or self.DEFAULT_MODEL
+        self.provider = (provider or os.getenv('AIBASE_PROVIDER', self.PROVIDER_OLLAMA)).lower()
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
+
+        if self.provider == self.PROVIDER_OPENAI:
+            from openai import OpenAI
+            self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+            if not self.api_key:
+                raise ValueError(
+                    "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
+                    "or pass it to the constructor."
+                )
+            self.client = OpenAI(api_key=self.api_key)
+            self.model = model or self.DEFAULT_MODEL
+        else:
+            # Ollama provider (default)
+            self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
+            self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
     
-    def translate(self, description, target_language='python', include_comments=True):
-        """
-        Translate natural language description to code.
-        
-        Args:
-            description (str): Natural language description of what the code should do
-            target_language (str): Programming language to generate code in
-            include_comments (bool): Whether to include explanatory comments
-            
-        Returns:
-            str: Generated code
-        """
-        if target_language.lower() not in self.SUPPORTED_LANGUAGES:
-            raise ValueError(
-                f"Unsupported language: {target_language}. "
-                f"Supported languages: {', '.join(self.SUPPORTED_LANGUAGES.keys())}"
-            )
-        
-        lang_name = self.SUPPORTED_LANGUAGES[target_language.lower()]
-        
+    def _build_prompts(self, description, lang_name, include_comments):
+        """Build system and user prompts for code generation."""
         system_prompt = (
             f"You are an expert programmer that translates natural language descriptions "
             f"into clean, efficient, and well-structured {lang_name} code. "
             f"Provide only the code without additional explanations unless specifically asked. "
             f"{'Include helpful comments to explain the code.' if include_comments else 'Minimize comments.'}"
         )
-        
         user_prompt = (
             f"Convert the following natural language description into {lang_name} code:\n\n"
             f"{description}\n\n"
             f"Provide complete, working code that can be run or used directly."
         )
-        
+        return system_prompt, user_prompt
+
+    @staticmethod
+    def _strip_code_fences(text):
+        """Remove surrounding markdown code fences if present."""
+        if text.startswith('```'):
+            lines = text.split('\n')
+            if len(lines) > 2 and lines[-1].strip() == '```':
+                text = '\n'.join(lines[1:-1])
+        return text
+
+    def _generate_ollama(self, system_prompt, user_prompt):
+        """Generate code using the local Ollama HTTP API."""
+        url = f"{self.ollama_base_url}/api/generate"
+        payload = {
+            "model": self.model,
+            "prompt": f"{system_prompt}\n\n{user_prompt}",
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.max_tokens,
+            }
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["response"].strip()
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(
+                f"Cannot connect to Ollama at {self.ollama_base_url}. "
+                "Make sure Ollama is running (https://ollama.com) and the model is pulled."
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error during Ollama generation: {str(e)}")
+
+    def _generate_openai(self, system_prompt, user_prompt):
+        """Generate code using the OpenAI API."""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -104,19 +139,37 @@ class AibaseTranslator:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
-            
-            generated_code = response.choices[0].message.content.strip()
-            
-            # Remove markdown code blocks if present
-            if generated_code.startswith('```'):
-                lines = generated_code.split('\n')
-                # Remove first and last lines (markdown delimiters)
-                generated_code = '\n'.join(lines[1:-1]) if len(lines) > 2 else generated_code
-            
-            return generated_code
-            
+            return response.choices[0].message.content.strip()
         except Exception as e:
-            raise RuntimeError(f"Error during translation: {str(e)}")
+            raise RuntimeError(f"Error during OpenAI generation: {str(e)}")
+
+    def translate(self, description, target_language='python', include_comments=True):
+        """
+        Translate natural language description to code.
+
+        Args:
+            description (str): Natural language description of what the code should do
+            target_language (str): Programming language to generate code in
+            include_comments (bool): Whether to include explanatory comments
+
+        Returns:
+            str: Generated code
+        """
+        if target_language.lower() not in self.SUPPORTED_LANGUAGES:
+            raise ValueError(
+                f"Unsupported language: {target_language}. "
+                f"Supported languages: {', '.join(self.SUPPORTED_LANGUAGES.keys())}"
+            )
+
+        lang_name = self.SUPPORTED_LANGUAGES[target_language.lower()]
+        system_prompt, user_prompt = self._build_prompts(description, lang_name, include_comments)
+
+        if self.provider == self.PROVIDER_OPENAI:
+            generated_code = self._generate_openai(system_prompt, user_prompt)
+        else:
+            generated_code = self._generate_ollama(system_prompt, user_prompt)
+
+        return self._strip_code_fences(generated_code)
     
     def translate_interactive(self):
         """Run an interactive session for translating descriptions to code."""
@@ -205,7 +258,12 @@ Examples:
     )
     parser.add_argument(
         '--model',
-        help=f'OpenAI model to use (default: {AibaseTranslator.DEFAULT_MODEL})'
+        help=f'Model to use (default: provider-specific; Ollama: {AibaseTranslator.DEFAULT_OLLAMA_MODEL}, OpenAI: {AibaseTranslator.DEFAULT_MODEL})'
+    )
+    parser.add_argument(
+        '--provider',
+        help='AI provider: "ollama" (default, free) or "openai" (requires OPENAI_API_KEY). '
+             'Can also be set via AIBASE_PROVIDER env var.'
     )
     parser.add_argument(
         '--temperature',
@@ -224,7 +282,8 @@ Examples:
         translator = AibaseTranslator(
             model=args.model,
             temperature=args.temperature,
-            max_tokens=args.max_tokens
+            max_tokens=args.max_tokens,
+            provider=args.provider
         )
         
         if args.description:
