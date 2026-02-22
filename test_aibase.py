@@ -106,46 +106,9 @@ def test_translation_with_mock_ollama():
         return False
 
 
-def test_translation_with_mock_openai():
-    """Test translation workflow with mocked OpenAI response."""
-    print("\nTest 6: Translation with Mocked OpenAI API")
-    print("-" * 50)
-
-    try:
-        mock_response = Mock()
-        mock_choice = Mock()
-        mock_message = Mock()
-        mock_message.content = "def hello_world():\n    print('Hello, World!')"
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-
-        with patch('openai.OpenAI') as mock_openai:
-            mock_client = Mock()
-            mock_client.chat.completions.create.return_value = mock_response
-            mock_openai.return_value = mock_client
-
-            translator = AibaseTranslator(api_key='fake-key-for-testing', provider='openai')
-            result = translator.translate("create a hello world function", "python")
-
-            assert "hello_world" in result.lower() or "hello" in result.lower()
-            assert mock_client.chat.completions.create.called
-            call_args = mock_client.chat.completions.create.call_args
-            assert call_args[1]['model'] == AibaseTranslator.DEFAULT_MODEL
-
-            print(f"✓ OpenAI translation workflow completed successfully")
-            print(f"  Generated: {result[:50]}...")
-            return True
-
-    except Exception as e:
-        print(f"✗ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
 def test_custom_parameters():
     """Test custom model parameters."""
-    print("\nTest 7: Custom Parameters")
+    print("\nTest 6: Custom Parameters")
     print("-" * 50)
 
     try:
@@ -168,31 +131,9 @@ def test_custom_parameters():
         return False
 
 
-def test_openai_requires_key():
-    """Test that OpenAI provider raises error without API key."""
-    print("\nTest 8: OpenAI requires API key")
-    print("-" * 50)
-
-    env_backup = os.environ.pop('OPENAI_API_KEY', None)
-    try:
-        try:
-            AibaseTranslator(provider='openai')
-            print("✗ Should have raised ValueError")
-            return False
-        except ValueError as e:
-            print(f"✓ Correctly raised ValueError: {e}")
-            return True
-    except Exception as e:
-        print(f"✗ Test failed unexpectedly: {e}")
-        return False
-    finally:
-        if env_backup is not None:
-            os.environ['OPENAI_API_KEY'] = env_backup
-
-
 def test_code_fence_stripping():
     """Test that markdown code fences are stripped from output."""
-    print("\nTest 9: Code fence stripping")
+    print("\nTest 7: Code fence stripping")
     print("-" * 50)
 
     try:
@@ -230,9 +171,7 @@ def run_all_tests():
         test_translation_mock,
         test_invalid_language,
         test_translation_with_mock_ollama,
-        test_translation_with_mock_openai,
         test_custom_parameters,
-        test_openai_requires_key,
         test_code_fence_stripping,
     ]
 

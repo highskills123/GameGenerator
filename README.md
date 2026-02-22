@@ -13,7 +13,7 @@ Aibase is an intelligent code generator that translates natural language descrip
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
 - 🌍 **Web UI**: Responsive browser interface — works on desktop, tablet, and phone
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
-- ⚡ **Fast & Efficient**: Powered by local Ollama models (free, no API key required) or OpenAI GPT models (optional)
+- ⚡ **Fast & Efficient**: Powered by local Ollama models (free, no API key required)
 - 🌐 **REST API**: Full-featured API for integrations
 - 🤖 **Bot-Ready**: Easy to integrate with Discord, Telegram, Slack, and other platforms
 
@@ -56,8 +56,6 @@ ollama pull qwen2.5-coder:7b
 ```bash
 cp .env.example .env
 ```
-
-> **OpenAI users**: Set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in `.env` to use OpenAI instead.
 
 ## Usage
 
@@ -178,7 +176,7 @@ python examples.py
 ## How It Works
 
 1. **Input**: You provide a natural language description of what you want
-2. **Processing**: Aibase sends your description to a local Ollama model (default) or OpenAI GPT (optional)
+2. **Processing**: Aibase sends your description to a local Ollama model
 3. **Generation**: The AI generates clean, efficient code in your target language
 4. **Output**: You receive production-ready code with helpful comments
 
@@ -257,8 +255,7 @@ See [discord_bot.py](discord_bot.py) for the implementation and [API.md](API.md)
 ## Requirements
 
 - Python 3.7+
-- [Ollama](https://ollama.com) running locally with `qwen2.5-coder:7b` pulled (default, free)
-- **Or** an OpenAI API key (set `AIBASE_PROVIDER=openai`)
+- [Ollama](https://ollama.com) running locally with `qwen2.5-coder:7b` pulled
 - Dependencies listed in `requirements.txt`
 
 ## Configuration
@@ -266,14 +263,8 @@ See [discord_bot.py](discord_bot.py) for the implementation and [API.md](API.md)
 Copy `.env.example` to `.env` and adjust as needed:
 
 ```
-# Use Ollama (default, free)
-AIBASE_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5-coder:7b
-
-# Or use OpenAI (optional)
-# AIBASE_PROVIDER=openai
-# OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 ## Contributing
@@ -290,7 +281,7 @@ This project is open source and available under the MIT License.
 
 ## Disclaimer
 
-By default, Aibase runs fully locally using [Ollama](https://ollama.com) with no API key required. When using the optional OpenAI provider (`AIBASE_PROVIDER=openai`), API usage is subject to OpenAI's pricing and terms of service.
+Aibase runs fully locally using [Ollama](https://ollama.com) — no API key required, no external services.
 
 ## Support
 

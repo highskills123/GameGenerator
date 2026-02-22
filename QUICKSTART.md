@@ -16,10 +16,8 @@
 3. **(Optional) Configure settings via `.env`:**
    ```bash
    cp .env.example .env
-   # Edit .env if you want to change the provider, model, or use OpenAI
+   # Edit .env to change the model or Ollama URL
    ```
-
-> **OpenAI users**: Set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in `.env`.
 
 ## Accessing the Web UI
 
@@ -168,10 +166,6 @@ print(code)
 - Make sure Ollama is running: `ollama serve`
 - Make sure you've pulled the model: `ollama pull qwen2.5-coder:7b`
 - Check that `OLLAMA_BASE_URL` points to the right address (default: `http://localhost:11434`)
-
-**Error: OpenAI API key not found**
-- Only needed when `AIBASE_PROVIDER=openai`
-- Make sure you've created a `.env` file with `OPENAI_API_KEY=...`
 
 **Error: Unsupported language**
 - Check the list of supported languages in README.md

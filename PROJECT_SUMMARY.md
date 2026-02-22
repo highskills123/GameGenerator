@@ -7,7 +7,7 @@ Aibase is a complete AI-powered natural language to code translation system that
 
 ### Core Features
 1. ✅ **AI Translation Engine** (`aibase.py`)
-   - OpenAI GPT-3.5 integration
+   - Ollama local model integration (free, no API key)
    - Support for 12 programming languages
    - Configurable parameters (model, temperature, max_tokens)
    - Interactive and CLI modes
@@ -116,11 +116,12 @@ code = translator.translate("create a function", "python")
 6. `test_aibase.py` (186 lines) - Tests
 
 ## Dependencies
-- openai>=1.0.0
 - python-dotenv>=1.0.0
 - colorama>=0.4.6
 - flask>=3.0.0
 - flask-cors>=4.0.0
+- requests>=2.28.0
+- pyngrok>=7.0.0
 
 ## What Users Can Do
 1. Generate code from natural language in 12+ languages
@@ -131,9 +132,9 @@ code = translator.translate("create a function", "python")
 6. Deploy as a service
 
 ## Next Steps for Users
-1. Get OpenAI API key
-2. Install dependencies: `pip install -r requirements.txt`
-3. Configure `.env` file
+1. Install Ollama: https://ollama.com
+2. Pull the model: `ollama pull qwen2.5-coder:7b`
+3. Install dependencies: `pip install -r requirements.txt`
 4. Choose usage mode:
    - Try CLI: `python aibase.py`
    - Run API: `python api_server.py`

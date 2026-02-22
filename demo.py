@@ -188,9 +188,8 @@ export default router;
 1. Install dependencies:
    pip install -r requirements.txt
 
-2. Set up your OpenAI API key:
-   cp .env.example .env
-   # Edit .env and add your API key
+2. Install and start Ollama (https://ollama.com):
+   ollama pull qwen2.5-coder:7b
 
 3. Run in interactive mode:
    python aibase.py

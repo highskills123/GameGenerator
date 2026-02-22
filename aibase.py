@@ -20,12 +20,10 @@ load_dotenv()
 class AibaseTranslator:
     """Main class for translating natural language to code."""
 
-    # Provider constants
+    # Provider
     PROVIDER_OLLAMA = 'ollama'
-    PROVIDER_OPENAI = 'openai'
 
-    # Default model and generation parameters
-    DEFAULT_MODEL = "gpt-3.5-turbo"
+    # Default generation parameters
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_MAX_TOKENS = 2000
 
@@ -50,41 +48,23 @@ class AibaseTranslator:
 
     @staticmethod
     def resolve_provider(provider=None):
-        """Return the effective provider name, defaulting to 'ollama'."""
-        return (provider or os.getenv('AIBASE_PROVIDER') or AibaseTranslator.PROVIDER_OLLAMA).lower()
+        """Always returns 'ollama' — the only supported provider."""
+        return AibaseTranslator.PROVIDER_OLLAMA
 
-    def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None, provider=None):
+    def __init__(self, model=None, temperature=None, max_tokens=None, **_ignored):
         """
         Initialize the translator.
 
         Args:
-            api_key (str): OpenAI API key (only required when provider is 'openai')
-            model (str): Model to use. Defaults to provider-specific default.
-            temperature (float): Temperature for generation (defaults to 0.7)
-            max_tokens (int): Maximum tokens to generate (defaults to 2000)
-            provider (str): AI provider to use ('ollama' or 'openai').
-                            Defaults to AIBASE_PROVIDER env var or 'ollama'.
+            model (str): Ollama model to use (default: qwen2.5-coder:7b).
+            temperature (float): Temperature for generation (default: 0.7).
+            max_tokens (int): Maximum tokens to generate (default: 2000).
         """
-        self.provider = AibaseTranslator.resolve_provider(provider)
+        self.provider = self.PROVIDER_OLLAMA
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
-
-        if self.provider == self.PROVIDER_OPENAI:
-            from openai import OpenAI
-            self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-            if not self.api_key:
-                raise ValueError(
-                    "OpenAI API key not found. "
-                    "Set OPENAI_API_KEY in your .env file, or switch to the free "
-                    "Ollama provider by setting AIBASE_PROVIDER=ollama in .env "
-                    "(no API key needed — see .env.example)."
-                )
-            self.client = OpenAI(api_key=self.api_key)
-            self.model = model or self.DEFAULT_MODEL
-        else:
-            # Ollama provider (default)
-            self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
-            self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
+        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
+        self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
     
     def _build_prompts(self, description, lang_name, include_comments):
         """Build system and user prompts for code generation."""
@@ -134,22 +114,6 @@ class AibaseTranslator:
         except Exception as e:
             raise RuntimeError(f"Error during Ollama generation: {str(e)}")
 
-    def _generate_openai(self, system_prompt, user_prompt):
-        """Generate code using the OpenAI API."""
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            raise RuntimeError(f"Error during OpenAI generation: {str(e)}")
-
     def translate(self, description, target_language='python', include_comments=True):
         """
         Translate natural language description to code.
@@ -170,13 +134,7 @@ class AibaseTranslator:
 
         lang_name = self.SUPPORTED_LANGUAGES[target_language.lower()]
         system_prompt, user_prompt = self._build_prompts(description, lang_name, include_comments)
-
-        if self.provider == self.PROVIDER_OPENAI:
-            generated_code = self._generate_openai(system_prompt, user_prompt)
-        else:
-            generated_code = self._generate_ollama(system_prompt, user_prompt)
-
-        return self._strip_code_fences(generated_code)
+        return self._strip_code_fences(self._generate_ollama(system_prompt, user_prompt))
     
     def translate_interactive(self):
         """Run an interactive session for translating descriptions to code."""
@@ -265,12 +223,7 @@ Examples:
     )
     parser.add_argument(
         '--model',
-        help=f'Model to use (default: provider-specific; Ollama: {AibaseTranslator.DEFAULT_OLLAMA_MODEL}, OpenAI: {AibaseTranslator.DEFAULT_MODEL})'
-    )
-    parser.add_argument(
-        '--provider',
-        help='AI provider: "ollama" (default, free) or "openai" (requires OPENAI_API_KEY). '
-             'Can also be set via AIBASE_PROVIDER env var.'
+        help=f'Ollama model to use (default: {AibaseTranslator.DEFAULT_OLLAMA_MODEL})'
     )
     parser.add_argument(
         '--temperature',
@@ -290,7 +243,6 @@ Examples:
             model=args.model,
             temperature=args.temperature,
             max_tokens=args.max_tokens,
-            provider=args.provider
         )
         
         if args.description:

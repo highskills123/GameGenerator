@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 """
 Test script for Aibase API
-Tests the API endpoints without requiring actual OpenAI API key
+Tests the API endpoints (no API key needed — uses Ollama)
 """
 
 import json

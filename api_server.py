@@ -76,11 +76,11 @@ def translate():
     Request body:
     {
         "description": "natural language description",
-        "language": "python",  // optional, defaults to python
-        "include_comments": true,  // optional, defaults to true
-        "model": "gpt-3.5-turbo",  // optional
-        "temperature": 0.7,  // optional
-        "max_tokens": 2000  // optional
+        "language": "python",       // optional, defaults to python
+        "include_comments": true,   // optional, defaults to true
+        "model": "qwen2.5-coder:7b", // optional, overrides OLLAMA_MODEL
+        "temperature": 0.7,         // optional
+        "max_tokens": 2000          // optional
     }
     
     Response:
@@ -189,28 +189,7 @@ def get_local_ip():
 
 
 def check_provider_config():
-    """
-    Detect the configured AI provider and warn early if it is misconfigured.
-
-    Returns a one-line status string to embed in the startup banner.
-    """
-    provider = AibaseTranslator.resolve_provider()
-
-    if provider == 'openai':
-        if os.getenv('OPENAI_API_KEY'):
-            return '  Provider:       OpenAI  ✓ (API key found)'
-        else:
-            return (
-                '  Provider:       OpenAI\n'
-                '\n'
-                '  ⚠  WARNING: AIBASE_PROVIDER=openai but OPENAI_API_KEY is not set.\n'
-                '     Translation requests will fail until you either:\n'
-                '       • Add OPENAI_API_KEY=your_key to your .env file, OR\n'
-                '       • Switch to the free Ollama provider:\n'
-                '         Set AIBASE_PROVIDER=ollama in .env  (no API key needed)'
-            )
-
-    # Ollama (default)
+    """Return a status string about the Ollama configuration for the startup banner."""
     ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
     model = os.getenv('OLLAMA_MODEL', 'qwen2.5-coder:7b')
     return (
