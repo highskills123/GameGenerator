@@ -1,300 +1,180 @@
 # Quick Start Guide
 
-## 📥 Get the LATEST code first
+## 📋 Prerequisites (one-time setup)
 
-> ⚠️ **Important:** The fixes are on the `copilot/resolve-merge-conflicts-pr-12` branch,
-> not `main`. Use one of these to get the correct version:
+Before anything else, make sure you have these three things installed:
+
+| # | What | Download |
+|---|---|---|
+| 1 | **Python 3.9+** | https://www.python.org/downloads/ |
+| 2 | **Ollama** (runs AI models locally, free) | https://ollama.com |
+| 3 | **pip** (comes with Python) | — |
+
+> **Windows tip:** when installing Python, tick ☑ "Add Python to PATH" in the installer.
+
+---
+
+## 📥 Step 1 — Get the code
 
 **Option A — Download ZIP (easiest, no git needed):**  
-👉 **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+👉 **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/fix-ollama-integration.zip**
 
-1. Click the link above — it downloads a ZIP file
-2. Right-click → **Extract All** → choose a folder (e.g. `C:\Users\high\Aibase`)
-3. Open Command Prompt and `cd` into it:
+1. Click the link above — a ZIP file downloads
+2. Right-click the ZIP → **Extract All** → choose a folder (e.g. `C:\Users\you\Aibase`)
+3. Open **Command Prompt** (Windows) or **Terminal** (Mac/Linux) and `cd` into the extracted folder:
    ```
-   cd C:\Users\high\Aibase\Aibase-copilot-resolve-merge-conflicts-pr-12
+   cd C:\Users\you\Aibase\Aibase-copilot-fix-ollama-integration
    ```
+   > **Tip (Windows):** Open File Explorer, navigate into the Aibase folder, click the address bar, type `cmd`, press Enter — this opens Command Prompt already in the right folder.
 
 **Option B — git clone:**
 ```
 git clone https://github.com/highskills123/Aibase.git
 cd Aibase
-git checkout copilot/resolve-merge-conflicts-pr-12
+git checkout copilot/fix-ollama-integration
 ```
 
 ---
 
-## ⚡ Share with a friend — quick steps
-
-### Step 0 — Open Command Prompt IN the Aibase folder
-
-**If you used git clone:**
-```
-cd Aibase
-```
-
-**If you downloaded the ZIP** (extracted to e.g. `Downloads\Aibase-main`):
-```
-cd C:\Users\high\Downloads\Aibase-main
-```
-
-> **Tip:** You can also open File Explorer, navigate into the Aibase folder,
-> click the address bar, type `cmd`, and press Enter — this opens Command Prompt
-> already in the right folder.
-
-### Step 1 — Create your `.env` file
-
-**Windows CMD:**
-```
-copy .env.example .env
-notepad .env
-```
-
-**Mac/Linux:**
-```bash
-cp .env.example .env
-nano .env
-```
-
-Your `.env` file will look like this. You only need to do **two things**:
-
-1. **Remove the `#` in front of `NGROK_AUTHTOKEN`** and paste your token after `=`
-2. **Remove the `#` in front of `NGROK_DOMAIN`** — keep the domain exactly as it is
+## 📦 Step 2 — Install Python dependencies
 
 ```
-# Before (what the file looks like):
-# NGROK_AUTHTOKEN=paste_your_authtoken_here
-# NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
-
-# After (what you change it to):
-NGROK_AUTHTOKEN=2abc1xyz_your_real_token_here
-NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
+pip install -r requirements.txt
 ```
 
-> **Do NOT change the domain name** — `costless-dorthy-unmeanderingly.ngrok-free.dev` is YOUR reserved domain, keep it exactly as-is.
->
-> **Get your authtoken** (free) at: https://dashboard.ngrok.com/get-started/your-authtoken
-> — log in, copy the token, paste it after `NGROK_AUTHTOKEN=`
-
-Save the file and close Notepad.
-
-### Step 2 — Start the server
-
-Run this command in Command Prompt (Windows) or Terminal (Mac/Linux):
-
-```
-python api_server.py --ngrok
-```
-
-That's it — works on Windows, Mac, and Linux without any extra scripts.
-
-> Optional shortcuts if you prefer:
-> - **Mac/Linux:** `./start.sh --ngrok`
-> - **Windows (convenience script):** `run.bat --ngrok`
-
-The startup output will show:
-```
-  🌍 Public URL:   https://costless-dorthy-unmeanderingly.ngrok-free.dev
-  Share this link with anyone — no router setup needed!
-```
-
-Send that link to your friend and they can use the full Aibase UI in their browser.
-
-> ⚠️ **Keep this terminal window open!**  
-> The public link only works **while the server is running**.  
-> If you close the terminal (or your computer sleeps), the link returns a 404 error.  
-> To bring it back, just run `python api_server.py --ngrok` again.
-
-> ⚠️ **Windows note:** Do **not** try to set variables like `NGROK_DOMAIN=value` directly
-> in the command prompt — that syntax only works on Linux/Mac. Use the `.env` file instead,
-> as shown above.
+You only need to do this once.
 
 ---
 
-## Setup (One-time)
+## 🚀 Step 3 — Start everything
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Install Ollama and pull the default model (free, no API key needed):**
-   ```bash
-   # Install Ollama from https://ollama.com, then:
-   ollama pull qwen2.5-coder:7b
-   ```
-
-3. **(Optional) Configure settings via `.env`:**
-   ```bash
-   cp .env.example .env
-   # Edit .env to change the model or Ollama URL
-   ```
-
-## Accessing the Web UI
-
-After running `python api_server.py`, look at the startup output:
+### Recommended: one command does it all
 
 ```
-  This computer:  http://localhost:5000/
-  Local network:  http://192.168.1.42:5000/
+python startollamaserver.py
 ```
 
-| Who needs access | URL to use |
-|---|---|
-| You (same computer) | `http://localhost:5000/` |
-| Friends on the same Wi-Fi/LAN | `http://<local IP shown above>:5000/` |
-| Anyone on the internet | Start with `--ngrok` flag (see below) |
+This single command:
+1. **Starts `ollama serve`** in the background (skips this if Ollama is already running)
+2. **Waits** until Ollama is ready
+3. **Pulls the AI model** automatically if you don't have it yet (`qwen2.5-coder:7b`, ~4 GB on first run)
+4. **Starts the Aibase web server** and opens a public **HTTPS URL** via ngrok
 
-## Sharing with friends over the internet
-
-The easiest way to let a friend access your Aibase from anywhere is the built-in `--ngrok` flag:
-
-```bash
-# Install ngrok support (one-time)
-pip install pyngrok
-
-# Start the server with a public tunnel
-python api_server.py --ngrok
-```
-
-The startup output will show a link you can send to your friend:
+The output will look like this:
 
 ```
+  ✓  Ollama is ready
+  ✓  Model 'qwen2.5-coder:7b' is available
+
   🌍 Public URL:   https://abc123.ngrok-free.app
   Share this link with anyone — no router setup needed!
+
+  This computer:   http://localhost:5000/
+  Local network:   http://192.168.1.42:5000/
 ```
 
-That's it — your friend can open the link in any browser, including on their phone.
+Open one of those URLs in your browser and start generating code!
 
-> **Optional:** Create a free account at https://ngrok.com and add your authtoken to `.env`:
-> ```
-> NGROK_AUTHTOKEN=your_token_here
-> ```
-> This removes the 2-hour session limit on the free tier.
+### Useful flags
 
-## Usage Examples
+| Command | What it does |
+|---|---|
+| `python startollamaserver.py` | Full stack — Ollama + HTTPS tunnel (default) |
+| `python startollamaserver.py --no-ngrok` | Local only — no public URL |
+| `python startollamaserver.py --port 8080` | Use a different port |
+| `python startollamaserver.py --no-pull` | Skip the automatic model download |
 
-### Interactive Mode (Recommended for Beginners)
+---
+
+## 🔑 Step 4 — (Optional) Set up ngrok for a permanent URL
+
+By default ngrok gives you a random URL that changes every time. To get a **fixed URL** that stays the same:
+
+1. Sign up free at https://ngrok.com
+2. Copy your authtoken from https://dashboard.ngrok.com/get-started/your-authtoken
+3. Copy `.env.example` to `.env`:
+   - **Windows:** `copy .env.example .env`
+   - **Mac/Linux:** `cp .env.example .env`
+4. Open `.env` in a text editor and fill in:
+   ```
+   NGROK_AUTHTOKEN=paste_your_token_here
+   ```
+
+> Once you have an authtoken, ngrok also lets you reserve a **static domain** (free tier: 1 domain).  
+> Add it to `.env` as `NGROK_DOMAIN=your-reserved-domain.ngrok-free.app` and the URL will never change.
+
+---
+
+## 🌐 Step 5 — Use the web UI
+
+Open the URL printed by the launcher in any browser.
+
+- Type a description of what you want to build
+- Pick a language from the dropdown (Python, Flutter, React Native, JavaScript, …)
+- Click **Generate Code**
+- Copy or download the result
+
+---
+
+## ⚠️ Keep the terminal open!
+
+The public link **only works while the server is running**.  
+If you close the terminal window, the link returns a 404 error.  
+Just run `python startollamaserver.py` again to bring it back.
+
+---
+
+## 🛠️ Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Cannot connect to Ollama` | Ollama is not running — `startollamaserver.py` starts it for you, but if you see this in a manual run: `ollama serve` |
+| `Model not found` / 503 from API | Pull the model: `ollama pull qwen2.5-coder:7b` |
+| `pip install` fails | Make sure Python is installed and on PATH, then retry |
+| Friend sees 404 on ngrok URL | Your terminal was closed — re-run `python startollamaserver.py` |
+| Can't reach local IP from other device | Make sure both devices are on the same Wi-Fi; allow port 5000 in your firewall |
+| Want a different AI model | Set `OLLAMA_MODEL=llama3` in `.env`, then `ollama pull llama3` |
+
+---
+
+## 💡 Usage examples
+
+### Web UI
+Just open the browser URL and describe what you want.
+
+### Command line (quick single generation)
 ```bash
-python aibase.py
-```
-Then follow the prompts to describe your code and select a language.
-
-### Command Line Examples
-
-**Generate a Python function:**
-```bash
-python aibase.py -d "create a function that checks if a string is a palindrome"
+python aibase.py -d "create a function that checks if a number is prime"
+python aibase.py -d "create a Flutter login screen with email/password" -l flutter
+python aibase.py -d "create a REST API endpoint for user signup" -l javascript -o signup.js
 ```
 
-**Generate JavaScript code:**
-```bash
-python aibase.py -d "create an async function to fetch data from an API" -l javascript
-```
-
-**Save to a file:**
-```bash
-python aibase.py -d "create a class for a stack data structure" -o stack.py
-```
-
-**Generate without comments:**
-```bash
-python aibase.py -d "create a merge sort function" --no-comments
-```
-
-## Common Use Cases
-
-### 1. Algorithm Implementation
-```bash
-python aibase.py -d "implement binary search algorithm"
-```
-
-### 2. Data Structure
-```bash
-python aibase.py -d "create a linked list class with insert and delete methods" -l python
-```
-
-### 3. Utility Functions
-```bash
-python aibase.py -d "create a function to validate email addresses using regex"
-```
-
-### 4. API Endpoints
-```bash
-python aibase.py -d "create an Express.js endpoint for user registration" -l javascript
-```
-
-### 5. Database Queries
-```bash
-python aibase.py -d "create a SQL query to find top 10 customers by purchase amount"
-```
-
-## Programmatic Usage
-
+### Programmatic (Python)
 ```python
 from aibase import AibaseTranslator
 
-# Initialize
 translator = AibaseTranslator()
-
-# Generate code
-code = translator.translate(
-    description="Create a function that finds the longest common substring",
-    target_language="python"
-)
-
-# Use the generated code
+code = translator.translate("create a binary search function", "python")
 print(code)
 ```
 
-## Tips for Best Results
+### REST API
+```bash
+curl -X POST http://localhost:5000/api/translate \
+  -H "Content-Type: application/json" \
+  -d '{"description": "create a hello world function", "language": "python"}'
+```
 
-1. **Be Specific**: The more detailed your description, the better the output
-   - ❌ "create a function"
-   - ✅ "create a function that takes a list of integers and returns the sum of even numbers"
+---
 
-2. **Specify Requirements**: Include any constraints or requirements
-   - ✅ "create a REST API endpoint with error handling and input validation"
+## Next steps
 
-3. **Mention Data Structures**: If you need specific data structures, mention them
-   - ✅ "create a function using a hash map to find duplicate elements"
+- See `README.md` for the full feature list and API docs
+- See `API.md` for all REST endpoints
+- Check `examples/` for Flutter and React Native examples
 
-4. **Include Edge Cases**: Mention important edge cases
-   - ✅ "create a function that handles empty strings and null values"
+## Next steps
 
-## Troubleshooting
-
-**Friend sees "HTTP 404" or "page not found" on the ngrok URL**
-- The server is not running on your computer — the link only works while `python api_server.py --ngrok` is running in your terminal
-- Reopen Command Prompt, `cd` into the Aibase folder, and run `python api_server.py --ngrok` again
-- Make sure you do **not** close the terminal window while your friend is using the site
-- If your computer went to sleep or restarted, run the command again — the ngrok tunnel reconnects automatically
-
-**Other devices can't connect to the server**
-- Make sure they are using your **local IP** (e.g. `http://192.168.1.42:5000/`), not `localhost`
-- `localhost` only works on the computer that is running the server
-- Check that your firewall allows inbound connections on port 5000:
-  - Windows: add a rule in Windows Defender Firewall
-  - macOS: System Settings → Network → Firewall
-  - Linux: `sudo ufw allow 5000/tcp`
-- For access from outside your home network, use ngrok (`ngrok http 5000`)
-
-**Error: Cannot connect to Ollama**
-- Make sure Ollama is running: `ollama serve`
-- Make sure you've pulled the model: `ollama pull qwen2.5-coder:7b`
-- Check that `OLLAMA_BASE_URL` points to the right address (default: `http://localhost:11434`)
-
-**Error: Unsupported language**
-- Check the list of supported languages in README.md
-- Use the exact language name (e.g., "javascript" not "js")
-
-**Generated code is not what you expected**
-- Try being more specific in your description
-- Break complex requests into smaller parts
-- Use the interactive mode to iterate on your request
-
-## Next Steps
-
-- Check out `examples.py` for more code examples
-- Read the full README.md for detailed documentation
-- Experiment with different languages and descriptions
+- See `README.md` for the full feature list and API docs
+- See `API.md` for all REST endpoints
+- Check `examples/` for Flutter and React Native examples

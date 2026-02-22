@@ -12,10 +12,10 @@ AI-powered Natural Language to Code Translator - Transform your ideas into worki
 > ```
 > git clone https://github.com/highskills123/Aibase.git
 > cd Aibase
-> git checkout copilot/resolve-merge-conflicts-pr-12
+> git checkout copilot/fix-ollama-integration
 > ```
 > Or download the latest ZIP directly (no git needed):  
-> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/fix-ollama-integration.zip**
 
 ## Overview
 
