@@ -57,18 +57,17 @@ NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
 
 ### Step 2 — Start the server
 
-**Windows (Command Prompt or PowerShell):**
+Run this command in Command Prompt (Windows) or Terminal (Mac/Linux):
+
 ```
-run.bat --ngrok
+python api_server.py --ngrok
 ```
 
-> ⚠️ **Do NOT use `start.bat`** — `start` is a built-in Windows command and will
-> behave unexpectedly. The file is now called `run.bat`.
+That's it — works on Windows, Mac, and Linux without any extra scripts.
 
-**Mac / Linux:**
-```bash
-./start.sh --ngrok
-```
+> Optional shortcuts if you prefer:
+> - **Mac/Linux:** `./start.sh --ngrok`
+> - **Windows (convenience script):** `run.bat --ngrok`
 
 The startup output will show:
 ```
