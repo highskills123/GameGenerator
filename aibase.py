@@ -48,6 +48,11 @@ class AibaseTranslator:
         'kotlin': 'Kotlin'
     }
 
+    @staticmethod
+    def resolve_provider(provider=None):
+        """Return the effective provider name, defaulting to 'ollama'."""
+        return (provider or os.getenv('AIBASE_PROVIDER') or AibaseTranslator.PROVIDER_OLLAMA).lower()
+
     def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None, provider=None):
         """
         Initialize the translator.
@@ -60,7 +65,7 @@ class AibaseTranslator:
             provider (str): AI provider to use ('ollama' or 'openai').
                             Defaults to AIBASE_PROVIDER env var or 'ollama'.
         """
-        self.provider = (provider or os.getenv('AIBASE_PROVIDER', self.PROVIDER_OLLAMA)).lower()
+        self.provider = AibaseTranslator.resolve_provider(provider)
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
 
@@ -69,8 +74,10 @@ class AibaseTranslator:
             self.api_key = api_key or os.getenv('OPENAI_API_KEY')
             if not self.api_key:
                 raise ValueError(
-                    "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
-                    "or pass it to the constructor."
+                    "OpenAI API key not found. "
+                    "Set OPENAI_API_KEY in your .env file, or switch to the free "
+                    "Ollama provider by setting AIBASE_PROVIDER=ollama in .env "
+                    "(no API key needed — see .env.example)."
                 )
             self.client = OpenAI(api_key=self.api_key)
             self.model = model or self.DEFAULT_MODEL

@@ -181,13 +181,43 @@ def internal_error(e):
 def get_local_ip():
     """Return the machine's primary local-network IP address."""
     try:
-        # Connect to an external address (no data sent) to discover the
-        # outgoing interface's IP address.
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(('8.8.8.8', 80))
             return s.getsockname()[0]
     except OSError:
         return None
+
+
+def check_provider_config():
+    """
+    Detect the configured AI provider and warn early if it is misconfigured.
+
+    Returns a one-line status string to embed in the startup banner.
+    """
+    provider = AibaseTranslator.resolve_provider()
+
+    if provider == 'openai':
+        if os.getenv('OPENAI_API_KEY'):
+            return '  Provider:       OpenAI  ✓ (API key found)'
+        else:
+            return (
+                '  Provider:       OpenAI\n'
+                '\n'
+                '  ⚠  WARNING: AIBASE_PROVIDER=openai but OPENAI_API_KEY is not set.\n'
+                '     Translation requests will fail until you either:\n'
+                '       • Add OPENAI_API_KEY=your_key to your .env file, OR\n'
+                '       • Switch to the free Ollama provider:\n'
+                '         Set AIBASE_PROVIDER=ollama in .env  (no API key needed)'
+            )
+
+    # Ollama (default)
+    ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    model = os.getenv('OLLAMA_MODEL', 'qwen2.5-coder:7b')
+    return (
+        f'  Provider:       Ollama  ✓ (free, no API key needed)\n'
+        f'  Ollama URL:     {ollama_url}\n'
+        f'  Model:          {model}'
+    )
 
 
 def start_ngrok_tunnel(port):
@@ -275,10 +305,14 @@ def main():
     else:
         ngrok_line = "  Public URL:     (ngrok not active — run with --ngrok to enable)"
 
+    provider_info = check_provider_config()
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                    Aibase API Server                         ║
 ╚══════════════════════════════════════════════════════════════╝
+
+{provider_info}
 
 Server running!  Open one of these URLs in a browser:
 
