@@ -510,7 +510,8 @@ def main():
         help='Run in debug mode'
     )
     parser.add_argument(
-        '--ngrok',
+        '--ngrok', '--ngrokk',   # accept common typo --ngrokk
+        dest='ngrok',
         action='store_true',
         help=(
             'Open a public ngrok tunnel so anyone on the internet can access '
