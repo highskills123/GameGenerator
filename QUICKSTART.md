@@ -44,8 +44,6 @@ cd C:\Users\high\Downloads\Aibase-main
 
 ### Step 1 — Create your `.env` file
 
-Copy the example file and open it in Notepad (or any text editor):
-
 **Windows CMD:**
 ```
 copy .env.example .env
@@ -55,16 +53,30 @@ notepad .env
 **Mac/Linux:**
 ```bash
 cp .env.example .env
-nano .env   # or open with any editor
+nano .env
 ```
 
-Uncomment and fill in these two lines:
+Your `.env` file will look like this. You only need to do **two things**:
+
+1. **Remove the `#` in front of `NGROK_AUTHTOKEN`** and paste your token after `=`
+2. **Remove the `#` in front of `NGROK_DOMAIN`** — keep the domain exactly as it is
+
 ```
-NGROK_AUTHTOKEN=your_authtoken_here
+# Before (what the file looks like):
+# NGROK_AUTHTOKEN=paste_your_authtoken_here
+# NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
+
+# After (what you change it to):
+NGROK_AUTHTOKEN=2abc1xyz_your_real_token_here
 NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
 ```
 
-> Get your free authtoken at https://dashboard.ngrok.com/get-started/your-authtoken
+> **Do NOT change the domain name** — `costless-dorthy-unmeanderingly.ngrok-free.dev` is YOUR reserved domain, keep it exactly as-is.
+>
+> **Get your authtoken** (free) at: https://dashboard.ngrok.com/get-started/your-authtoken
+> — log in, copy the token, paste it after `NGROK_AUTHTOKEN=`
+
+Save the file and close Notepad.
 
 ### Step 2 — Start the server
 
