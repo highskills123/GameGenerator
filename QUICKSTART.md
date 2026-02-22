@@ -1,5 +1,18 @@
 # Quick Start Guide
 
+## 📥 Get the code first
+
+```
+git clone https://github.com/highskills123/Aibase.git
+cd Aibase
+```
+
+No git? Download the ZIP instead:  
+👉 **https://github.com/highskills123/Aibase/archive/refs/heads/main.zip**  
+(extract it, then `cd` into the `Aibase-main` folder)
+
+---
+
 ## ⚡ Share with a friend — quick steps
 
 ### Step 1 — Create your `.env` file

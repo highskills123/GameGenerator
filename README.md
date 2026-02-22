@@ -2,6 +2,13 @@
 
 AI-powered Natural Language to Code Translator - Transform your ideas into working code instantly!
 
+> **📥 Clone / Download the project:**
+> ```
+> git clone https://github.com/highskills123/Aibase.git
+> cd Aibase
+> ```
+> Or download the ZIP directly: **https://github.com/highskills123/Aibase/archive/refs/heads/main.zip**
+
 ## Overview
 
 Aibase is an intelligent code generator that translates natural language descriptions into working code in multiple programming languages. Simply describe what you want in plain English, and Aibase will generate clean, efficient code for you.
@@ -19,18 +26,11 @@ Aibase is an intelligent code generator that translates natural language descrip
 
 ## Supported Languages
 
-- Python
-- JavaScript
-- TypeScript
-- Java
-- C++
-- C#
-- Go
-- Rust
-- PHP
-- Ruby
-- Swift
-- Kotlin
+**General:**  Python · JavaScript · TypeScript · Java · C++ · C# · Go · Rust · PHP · Ruby · Swift · Kotlin
+
+**Mobile / Flutter:**  Flutter/Dart · Dart · React Native
+
+**Game Dev (Flame):**  Flame · Flame Complete Game · Flame Game Component · Game Sprite · Game Animation · Game Tilemap
 
 ## Installation
 
