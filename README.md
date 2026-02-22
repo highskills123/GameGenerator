@@ -369,6 +369,43 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5-coder:7b
 ```
 
+## Troubleshooting
+
+### Ollama 404 / 503 errors
+
+If you see `Error during Ollama generation: 404 …` or the API returns `503`, the most common cause is that the model has not been pulled yet:
+
+```bash
+# Pull the default model (or whatever OLLAMA_MODEL is set to)
+ollama pull qwen2.5-coder:7b
+```
+
+The API server runs a startup connectivity check and prints a diagnostic line:
+
+```
+  Ollama status:  Ollama 0.16.3 reachable; model 'qwen2.5-coder:7b' available.
+```
+
+If it shows a warning instead, follow the printed instructions before making generation requests.
+
+**Other common causes:**
+
+| Symptom | Fix |
+|---|---|
+| `Cannot connect to Ollama` | Start Ollama: run `ollama serve` or open the Ollama app |
+| `model not found` | Pull the model: `ollama pull <model>` |
+| `OLLAMA_BASE_URL` wrong | Update `.env` — default is `http://localhost:11434` |
+
+### Configuring a different model
+
+Set `OLLAMA_MODEL` in your `.env` file:
+
+```
+OLLAMA_MODEL=llama3
+```
+
+Then pull it: `ollama pull llama3`
+
 ## Contributing
 
 Contributions are welcome! Feel free to:

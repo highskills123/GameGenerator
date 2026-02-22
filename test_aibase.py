@@ -289,6 +289,143 @@ def test_react_native_generator():
         return False
 
 
+def test_ollama_404_raises_model_not_found():
+    """Test that a 404 from Ollama raises a RuntimeError with actionable message."""
+    print("\nTest 14: Ollama 404 → actionable error message")
+    print("-" * 50)
+
+    try:
+        mock_resp = Mock()
+        mock_resp.ok = False
+        mock_resp.status_code = 404
+        mock_resp.text = '{"error":"model not found"}'
+        mock_resp.raise_for_status = Mock()
+
+        with patch('aibase.requests.post', return_value=mock_resp):
+            translator = AibaseTranslator()
+            try:
+                translator.translate("hello world", "python")
+                print("✗ Expected RuntimeError not raised")
+                return False
+            except RuntimeError as e:
+                msg = str(e)
+                assert '404' in msg, f"Expected '404' in error, got: {msg}"
+                assert 'ollama pull' in msg.lower(), \
+                    f"Expected 'ollama pull' hint in error, got: {msg}"
+                print(f"✓ Got expected RuntimeError: {msg[:80]}...")
+                return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_ollama_connection_refused_raises_clear_error():
+    """Test that a ConnectionError from Ollama raises a descriptive RuntimeError."""
+    print("\nTest 15: Ollama ConnectionError → clear error")
+    print("-" * 50)
+
+    try:
+        with patch('aibase.requests.post',
+                   side_effect=__import__('requests').exceptions.ConnectionError("refused")):
+            translator = AibaseTranslator()
+            try:
+                translator.translate("hello world", "python")
+                print("✗ Expected RuntimeError not raised")
+                return False
+            except RuntimeError as e:
+                msg = str(e)
+                assert 'ollama' in msg.lower(), f"Expected 'Ollama' in error, got: {msg}"
+                assert 'running' in msg.lower(), \
+                    f"Expected 'running' hint in error, got: {msg}"
+                print(f"✓ Got expected RuntimeError: {msg[:80]}...")
+                return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_check_ollama_health_unreachable():
+    """Test check_ollama_health when Ollama is unreachable."""
+    print("\nTest 16: check_ollama_health — Ollama unreachable")
+    print("-" * 50)
+
+    try:
+        with patch('aibase.requests.get',
+                   side_effect=__import__('requests').exceptions.ConnectionError("refused")):
+            translator = AibaseTranslator()
+            result = translator.check_ollama_health()
+            assert result['ok'] is False
+            assert 'connect' in result['message'].lower() or 'ollama' in result['message'].lower()
+            print(f"✓ Health check correctly reports unreachable: {result['message'][:80]}")
+            return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_check_ollama_health_model_missing():
+    """Test check_ollama_health when Ollama is up but model is not pulled."""
+    print("\nTest 17: check_ollama_health — model not pulled")
+    print("-" * 50)
+
+    try:
+        version_resp = Mock()
+        version_resp.ok = True
+        version_resp.raise_for_status = Mock()
+        version_resp.json.return_value = {"version": "0.16.3"}
+
+        tags_resp = Mock()
+        tags_resp.ok = True
+        tags_resp.raise_for_status = Mock()
+        tags_resp.json.return_value = {"models": [{"name": "llama3:latest"}]}
+
+        with patch('aibase.requests.get', side_effect=[version_resp, tags_resp]):
+            translator = AibaseTranslator(model="qwen2.5-coder:7b")
+            result = translator.check_ollama_health()
+            assert result['ok'] is False
+            assert result['model_available'] is False
+            assert 'ollama pull' in result['message'].lower() or 'not found' in result['message'].lower()
+            print(f"✓ Health check correctly reports missing model: {result['message'][:80]}")
+            return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_check_ollama_health_ok():
+    """Test check_ollama_health when everything is fine."""
+    print("\nTest 18: check_ollama_health — all OK")
+    print("-" * 50)
+
+    try:
+        version_resp = Mock()
+        version_resp.ok = True
+        version_resp.raise_for_status = Mock()
+        version_resp.json.return_value = {"version": "0.16.3"}
+
+        tags_resp = Mock()
+        tags_resp.ok = True
+        tags_resp.raise_for_status = Mock()
+        tags_resp.json.return_value = {"models": [{"name": "qwen2.5-coder:7b"}]}
+
+        with patch('aibase.requests.get', side_effect=[version_resp, tags_resp]):
+            translator = AibaseTranslator(model="qwen2.5-coder:7b")
+            result = translator.check_ollama_health()
+            assert result['ok'] is True
+            assert result['version'] == '0.16.3'
+            assert result['model_available'] is True
+            print(f"✓ Health check correctly reports OK: {result['message'][:80]}")
+            return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
@@ -310,6 +447,11 @@ def run_all_tests():
         test_mobile_language_targets,
         test_flutter_generator,
         test_react_native_generator,
+        test_ollama_404_raises_model_not_found,
+        test_ollama_connection_refused_raises_clear_error,
+        test_check_ollama_health_unreachable,
+        test_check_ollama_health_model_missing,
+        test_check_ollama_health_ok,
     ]
 
     results = []

@@ -4,11 +4,14 @@ Aibase - AI Language to Code Translator
 A tool that translates natural language descriptions into working code.
 """
 
+import logging
 import os
 import sys
 import requests
 from dotenv import load_dotenv
 from colorama import Fore, Style, init
+
+logger = logging.getLogger(__name__)
 
 # Initialize colorama for colored terminal output
 init(autoreset=True)
@@ -392,6 +395,60 @@ class AibaseTranslator:
                 text = '\n'.join(lines[1:-1])
         return text
 
+    def check_ollama_health(self):
+        """
+        Check Ollama connectivity and model availability.
+
+        Returns:
+            dict: {'ok': bool, 'version': str|None, 'model_available': bool|None, 'message': str}
+        """
+        version_url = f"{self.ollama_base_url}/api/version"
+        tags_url = f"{self.ollama_base_url}/api/tags"
+        result = {'ok': False, 'version': None, 'model_available': None, 'message': ''}
+
+        try:
+            resp = requests.get(version_url, timeout=5)
+            resp.raise_for_status()
+            result['version'] = resp.json().get('version', 'unknown')
+        except requests.exceptions.ConnectionError:
+            result['message'] = (
+                f"Cannot connect to Ollama at {self.ollama_base_url}. "
+                "Make sure Ollama is running (https://ollama.com)."
+            )
+            logger.warning("Ollama health check failed: %s", result['message'])
+            return result
+        except Exception as e:
+            result['message'] = f"Ollama version check failed: {e}"
+            logger.warning("Ollama health check failed: %s", result['message'])
+            return result
+
+        try:
+            resp = requests.get(tags_url, timeout=5)
+            resp.raise_for_status()
+            models = [m.get('name', '') for m in resp.json().get('models', [])]
+            result['model_available'] = any(
+                m == self.model
+                or m.split(':')[0] == self.model.split(':')[0]
+                for m in models
+            )
+            if not result['model_available']:
+                result['message'] = (
+                    f"Model '{self.model}' not found in Ollama. "
+                    f"Run: ollama pull {self.model}"
+                )
+                logger.warning("Ollama model check: %s", result['message'])
+            else:
+                result['ok'] = True
+                result['message'] = (
+                    f"Ollama {result['version']} reachable; model '{self.model}' available."
+                )
+                logger.info("Ollama health check passed: %s", result['message'])
+        except Exception as e:
+            result['message'] = f"Ollama tags check failed: {e}"
+            logger.warning("Ollama health check failed: %s", result['message'])
+
+        return result
+
     def _generate_ollama(self, system_prompt, user_prompt):
         """Generate code using the local Ollama HTTP API."""
         url = f"{self.ollama_base_url}/api/generate"
@@ -404,17 +461,34 @@ class AibaseTranslator:
                 "num_predict": self.max_tokens,
             }
         }
+        method = "POST"
         try:
+            logger.debug("Ollama request: %s %s (model=%s)", method, url, self.model)
             resp = requests.post(url, json=payload, timeout=120)
-            resp.raise_for_status()
+            if not resp.ok:
+                body_snippet = resp.text[:200]
+                logger.error(
+                    "Ollama %s %s returned HTTP %s: %s",
+                    method, url, resp.status_code, body_snippet,
+                )
+                if resp.status_code == 404:
+                    raise RuntimeError(
+                        f"Ollama returned 404 for POST {url}. "
+                        f"The model '{self.model}' may not be pulled. "
+                        f"Run: ollama pull {self.model}"
+                    )
+                resp.raise_for_status()
             return resp.json()["response"].strip()
+        except RuntimeError:
+            raise
         except requests.exceptions.ConnectionError:
             raise RuntimeError(
                 f"Cannot connect to Ollama at {self.ollama_base_url}. "
                 "Make sure Ollama is running (https://ollama.com) and the model is pulled."
             )
         except Exception as e:
-            raise RuntimeError(f"Error during Ollama generation: {str(e)}")
+            logger.error("Ollama generation error for %s %s: %s", method, url, e)
+            raise RuntimeError(f"Error during Ollama generation: {e}")
 
     def translate(self, description, target_language='python', include_comments=True):
         """

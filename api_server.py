@@ -464,10 +464,14 @@ def check_provider_config():
     """Return a status string about the Ollama configuration for the startup banner."""
     ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
     model = os.getenv('OLLAMA_MODEL', 'qwen2.5-coder:7b')
+    from aibase import AibaseTranslator
+    health = AibaseTranslator().check_ollama_health()
+    health_icon = '✓' if health['ok'] else '⚠'
     return (
-        f'  Provider:       Ollama  ✓ (free, no API key needed)\n'
+        f'  Provider:       Ollama  {health_icon}\n'
         f'  Ollama URL:     {ollama_url}\n'
-        f'  Model:          {model}'
+        f'  Model:          {model}\n'
+        f'  Ollama status:  {health["message"]}'
     )
 
 
