@@ -230,7 +230,7 @@ class AibaseTranslator:
     # Ollama defaults
     DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
     DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
-    DEFAULT_OLLAMA_TIMEOUT = 300
+    DEFAULT_OLLAMA_TIMEOUT = None
 
     SUPPORTED_LANGUAGES = {
         'python': 'Python',
@@ -271,14 +271,19 @@ class AibaseTranslator:
             model (str): Ollama model to use (default: qwen2.5-coder:7b).
             temperature (float): Temperature for generation (default: 0.7).
             max_tokens (int): Maximum tokens to generate (default: 2000).
-            timeout (int): Request timeout in seconds for Ollama generation (default: 300).
+            timeout (int | None): Request timeout in seconds for Ollama generation (default: None = no limit).
         """
         self.provider = self.PROVIDER_OLLAMA
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
         self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
         self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
-        self.timeout = timeout or int(os.getenv('OLLAMA_TIMEOUT', self.DEFAULT_OLLAMA_TIMEOUT))
+        _env_timeout = os.getenv('OLLAMA_TIMEOUT')
+        try:
+            _default_timeout = int(_env_timeout) if _env_timeout is not None else self.DEFAULT_OLLAMA_TIMEOUT
+        except ValueError:
+            _default_timeout = self.DEFAULT_OLLAMA_TIMEOUT
+        self.timeout = timeout if timeout is not None else _default_timeout
         # Lazy-initialized generator helpers
         self._flutter_generator = None
         self._react_native_generator = None
@@ -617,7 +622,7 @@ Examples:
     parser.add_argument(
         '--timeout',
         type=int,
-        help=f'Request timeout in seconds for Ollama generation (default: {AibaseTranslator.DEFAULT_OLLAMA_TIMEOUT})'
+        help=f'Request timeout in seconds for Ollama generation (default: no limit)'
     )
     
     args = parser.parse_args()
