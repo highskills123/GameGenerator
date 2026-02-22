@@ -1,5 +1,25 @@
 # Quick Start Guide
 
+## ⚡ Share with a friend — one command
+
+```bash
+./start.sh --ngrok
+```
+
+> **What this does:** installs dependencies, checks Ollama is running, starts the web UI,
+> and opens a public HTTPS link you can send to anyone.
+>
+> The link will look like this — copy it and send it to your friend:
+> ```
+>   🌍 Public URL:   https://abc123.ngrok-free.app
+>   Share this link with anyone — no router setup needed!
+> ```
+
+That's it!  
+On Windows run `python api_server.py --ngrok` instead (or use Git Bash for `./start.sh`).
+
+---
+
 ## Setup (One-time)
 
 1. **Install dependencies:**
