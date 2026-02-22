@@ -15,6 +15,22 @@ No git? Download the ZIP instead:
 
 ## ⚡ Share with a friend — quick steps
 
+### Step 0 — Open Command Prompt IN the Aibase folder
+
+**If you used git clone:**
+```
+cd Aibase
+```
+
+**If you downloaded the ZIP** (extracted to e.g. `Downloads\Aibase-main`):
+```
+cd C:\Users\high\Downloads\Aibase-main
+```
+
+> **Tip:** You can also open File Explorer, navigate into the Aibase folder,
+> click the address bar, type `cmd`, and press Enter — this opens Command Prompt
+> already in the right folder.
+
 ### Step 1 — Create your `.env` file
 
 Copy the example file and open it in Notepad (or any text editor):
@@ -43,8 +59,11 @@ NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
 
 **Windows (Command Prompt or PowerShell):**
 ```
-start.bat --ngrok
+run.bat --ngrok
 ```
+
+> ⚠️ **Do NOT use `start.bat`** — `start` is a built-in Windows command and will
+> behave unexpectedly. The file is now called `run.bat`.
 
 **Mac / Linux:**
 ```bash
