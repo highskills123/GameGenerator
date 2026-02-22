@@ -538,7 +538,10 @@ def main():
     if ngrok_url:
         ngrok_line = (
             f"  🌍 Public URL:   {ngrok_url}\n"
-            f"  Share this link with anyone — no router setup needed!"
+            f"  Share this link with anyone — no router setup needed!\n\n"
+            f"  ⚠️  IMPORTANT: This window must stay open.\n"
+            f"  If you close this terminal, the link stops working (HTTP 404).\n"
+            f"  Your friend will see a 404 error if the server is not running."
         )
     else:
         ngrok_line = "  Public URL:     (ngrok not active — run with --ngrok to enable)"

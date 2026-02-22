@@ -77,6 +77,11 @@ The startup output will show:
 
 Send that link to your friend and they can use the full Aibase UI in their browser.
 
+> ⚠️ **Keep this terminal window open!**  
+> The public link only works **while the server is running**.  
+> If you close the terminal (or your computer sleeps), the link returns a 404 error.  
+> To bring it back, just run `python api_server.py --ngrok` again.
+
 > ⚠️ **Windows note:** Do **not** try to set variables like `NGROK_DOMAIN=value` directly
 > in the command prompt — that syntax only works on Linux/Mac. Use the `.env` file instead,
 > as shown above.
@@ -235,6 +240,12 @@ print(code)
    - ✅ "create a function that handles empty strings and null values"
 
 ## Troubleshooting
+
+**Friend sees "HTTP 404" or "page not found" on the ngrok URL**
+- The server is not running on your computer — the link only works while `python api_server.py --ngrok` is running in your terminal
+- Reopen Command Prompt, `cd` into the Aibase folder, and run `python api_server.py --ngrok` again
+- Make sure you do **not** close the terminal window while your friend is using the site
+- If your computer went to sleep or restarted, run the command again — the ngrok tunnel reconnects automatically
 
 **Other devices can't connect to the server**
 - Make sure they are using your **local IP** (e.g. `http://192.168.1.42:5000/`), not `localhost`
