@@ -75,7 +75,30 @@ cp .env.example .env
 
 ## Usage
 
-### Web UI
+### One-command launcher (recommended)
+
+`startollamaserver.py` does everything in the right order — start Ollama, pull
+the model if needed, and expose the API over HTTPS via ngrok — in a single
+command:
+
+```bash
+# Full stack: Ollama + API server + public HTTPS URL
+python startollamaserver.py
+
+# Local only (no ngrok tunnel)
+python startollamaserver.py --no-ngrok
+
+# Custom port
+python startollamaserver.py --port 8080
+```
+
+What it does:
+1. Launches `ollama serve` in the background (skips this if Ollama is already running)
+2. Waits until Ollama is ready (polls `/api/version`)
+3. Checks whether the model is pulled; runs `ollama pull <model>` if not
+4. Starts `api_server.py --ngrok` → prints a public HTTPS URL you can share
+
+### Web UI (manual start)
 
 Start the server and open the web interface in any browser — including on mobile:
 
