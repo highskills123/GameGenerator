@@ -21,6 +21,21 @@
 
 > **OpenAI users**: Set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in `.env`.
 
+## Accessing the Web UI
+
+After running `python api_server.py`, look at the startup output:
+
+```
+  This computer:  http://localhost:5000/
+  Local network:  http://192.168.1.42:5000/
+```
+
+| Who needs access | URL to use |
+|---|---|
+| You (same computer) | `http://localhost:5000/` |
+| Friends on the same Wi-Fi/LAN | `http://<local IP shown above>:5000/` |
+| Anyone on the internet | Use ngrok: `ngrok http 5000` (see README) |
+
 ## Usage Examples
 
 ### Interactive Mode (Recommended for Beginners)
@@ -112,6 +127,15 @@ print(code)
    - ✅ "create a function that handles empty strings and null values"
 
 ## Troubleshooting
+
+**Other devices can't connect to the server**
+- Make sure they are using your **local IP** (e.g. `http://192.168.1.42:5000/`), not `localhost`
+- `localhost` only works on the computer that is running the server
+- Check that your firewall allows inbound connections on port 5000:
+  - Windows: add a rule in Windows Defender Firewall
+  - macOS: System Settings → Network → Firewall
+  - Linux: `sudo ufw allow 5000/tcp`
+- For access from outside your home network, use ngrok (`ngrok http 5000`)
 
 **Error: Cannot connect to Ollama**
 - Make sure Ollama is running: `ollama serve`

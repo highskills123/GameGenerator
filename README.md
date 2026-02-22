@@ -69,13 +69,45 @@ Start the server and open the web interface in any browser — including on mobi
 python api_server.py
 ```
 
-Then navigate to **http://localhost:5000** to use the visual interface:
+The startup output shows you exactly which URLs to use:
 
+```
+  This computer:  http://localhost:5000/
+  Local network:  http://192.168.1.42:5000/
+  (anyone on your Wi-Fi/LAN can use this URL)
+```
+
+- **Same computer** → `http://localhost:5000/`
+- **Other devices on the same Wi-Fi or LAN** → `http://<your-local-IP>:5000/`
+- **Anyone on the internet** → see [Sharing over the internet](#sharing-over-the-internet) below
+
+Once the page loads:
 - Type a description of what you want to build
 - Choose a target language from the dropdown
 - Toggle comments on or off
 - Click **Generate Code**
 - Copy the result to your clipboard or download it as a file
+
+### Sharing over the internet
+
+`localhost` is only reachable from **your own machine**. To share with people outside your network:
+
+**Option A — ngrok (easiest, free tier available):**
+```bash
+# 1. Install ngrok: https://ngrok.com/download
+# 2. In a second terminal while api_server.py is running:
+ngrok http 5000
+# ngrok prints a public URL like https://abc123.ngrok.io — share that link
+```
+
+**Option B — router port forwarding:**
+1. Log in to your router's admin page (usually `http://192.168.1.1`)
+2. Add a port-forwarding rule: external port `<PORT>` → your computer's local IP, port `<PORT>`
+   (replace `<PORT>` with your configured port, default `5000`)
+3. Find your public IP at https://whatismyip.com and share `http://<public-IP>:<PORT>/`
+
+> **Note:** When sharing publicly, anyone with the link can generate code using your
+> machine's resources. Stop the server with `Ctrl+C` when you are done.
 
 ### Interactive Mode
 

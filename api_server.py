@@ -5,6 +5,7 @@ REST API interface for the AI code translator
 """
 
 import os
+import socket
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -177,6 +178,18 @@ def internal_error(e):
     }), 500
 
 
+def get_local_ip():
+    """Return the machine's primary local-network IP address."""
+    try:
+        # Connect to an external address (no data sent) to discover the
+        # outgoing interface's IP address.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 def main():
     """Run the API server."""
     import argparse
@@ -202,17 +215,29 @@ def main():
     )
     
     args = parser.parse_args()
-    
+
+    local_ip = get_local_ip()
+    lan_line = (
+        f"  Local network:  http://{local_ip}:{args.port}/\n  (anyone on your Wi-Fi/LAN can use this URL)"
+        if local_ip else
+        "  Local network:  (could not detect local IP)"
+    )
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                    Aibase API Server                         ║
 ╚══════════════════════════════════════════════════════════════╝
 
-Server starting...
-URL: http://{args.host}:{args.port}
-Debug mode: {args.debug}
+Server running!  Open one of these URLs in a browser:
 
-Web UI:   http://{args.host}:{args.port}/
+  This computer:  http://localhost:{args.port}/
+{lan_line}
+
+  ⚠  For internet access (outside your network) you need either:
+     • Port-forward port {args.port} on your router, OR
+     • Use a tunnel:  ngrok http {args.port}
+
+Debug mode: {args.debug}
 
 Endpoints:
   GET  /                   - Web UI (browser)
