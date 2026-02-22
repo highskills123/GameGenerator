@@ -11,6 +11,7 @@ Aibase is an intelligent code generator that translates natural language descrip
 - 🚀 **Multi-Language Support**: Generate code in Python, JavaScript, Java, C++, Go, Rust, TypeScript, and more
 - 💬 **Natural Language Input**: Describe what you want in plain English
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
+- 🌍 **Web UI**: Responsive browser interface — works on desktop, tablet, and phone
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
 - ⚡ **Fast & Efficient**: Powered by local Ollama models (free, no API key required) or OpenAI GPT models (optional)
 - 🌐 **REST API**: Full-featured API for integrations
@@ -59,6 +60,22 @@ cp .env.example .env
 > **OpenAI users**: Set `AIBASE_PROVIDER=openai` and `OPENAI_API_KEY=<your key>` in `.env` to use OpenAI instead.
 
 ## Usage
+
+### Web UI
+
+Start the server and open the web interface in any browser — including on mobile:
+
+```bash
+python api_server.py
+```
+
+Then navigate to **http://localhost:5000** to use the visual interface:
+
+- Type a description of what you want to build
+- Choose a target language from the dropdown
+- Toggle comments on or off
+- Click **Generate Code**
+- Copy the result to your clipboard or download it as a file
 
 ### Interactive Mode
 
@@ -145,7 +162,8 @@ python api_server.py --host 0.0.0.0 --port 8080
 
 ### API Endpoints
 
-- `GET /` - API information
+- `GET /` - Web UI
+- `GET /api/info` - API information (JSON)
 - `GET /api/health` - Health check
 - `GET /api/languages` - List supported languages
 - `POST /api/translate` - Translate natural language to code

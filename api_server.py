@@ -5,7 +5,7 @@ REST API interface for the AI code translator
 """
 
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 from aibase import AibaseTranslator
@@ -30,7 +30,13 @@ def get_translator():
 
 @app.route('/', methods=['GET'])
 def index():
-    """API root endpoint."""
+    """Serve the Aibase web UI."""
+    return render_template('index.html')
+
+
+@app.route('/api/info', methods=['GET'])
+def api_info():
+    """JSON description of available API endpoints."""
     return jsonify({
         'name': 'Aibase API',
         'version': '1.0.0',
@@ -206,8 +212,11 @@ Server starting...
 URL: http://{args.host}:{args.port}
 Debug mode: {args.debug}
 
+Web UI:   http://{args.host}:{args.port}/
+
 Endpoints:
-  GET  /                   - API information
+  GET  /                   - Web UI (browser)
+  GET  /api/info           - API information (JSON)
   GET  /api/health         - Health check
   GET  /api/languages      - List supported languages
   POST /api/translate      - Translate natural language to code
