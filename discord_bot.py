@@ -75,7 +75,7 @@ async def generate_code(ctx, language: str = 'python', *, description: str = Non
                 "description": description,
                 "language": language.lower()
             },
-            timeout=30
+            timeout=None
         )
         
         result = response.json()
@@ -123,7 +123,7 @@ async def generate_code(ctx, language: str = 'python', *, description: str = Non
             await thinking_msg.edit(content=f"❌ Error: {error}")
             
     except requests.exceptions.Timeout:
-        await thinking_msg.edit(content="❌ Request timed out. The code generation took too long.")
+        await thinking_msg.edit(content="❌ Request timed out. Please try again.")
     except requests.exceptions.ConnectionError:
         await thinking_msg.edit(content="❌ Could not connect to Aibase API. Make sure the server is running.")
     except Exception as e:
