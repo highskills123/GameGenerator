@@ -18,6 +18,27 @@
 That's it!  
 On Windows run `python api_server.py --ngrok` instead (or use Git Bash for `./start.sh`).
 
+### Using a fixed / static ngrok domain
+
+If you have a reserved ngrok domain (e.g. `costless-dorthy-unmeanderingly.ngrok-free.dev`)
+and want the URL to be the **same every time you restart**, add it to your `.env` file:
+
+```bash
+# In your .env file (copy .env.example if you haven't already):
+NGROK_AUTHTOKEN=your_authtoken_here          # required for static domains
+NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
+```
+
+Then start as normal:
+
+```bash
+./start.sh --ngrok
+# → 🌍 Public URL: https://costless-dorthy-unmeanderingly.ngrok-free.dev
+```
+
+> **Note:** A static/reserved domain requires an ngrok account and an authtoken.
+> Get both for free at https://dashboard.ngrok.com.
+
 ---
 
 ## Setup (One-time)

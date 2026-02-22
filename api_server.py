@@ -438,6 +438,10 @@ def start_ngrok_tunnel(port):
     """
     Open a public ngrok HTTPS tunnel to *port* using pyngrok.
 
+    If NGROK_DOMAIN is set in the environment (or .env), ngrok will bind to
+    that static/reserved domain (e.g. costless-dorthy-unmeanderingly.ngrok-free.dev)
+    so the URL is always the same across restarts.
+
     Returns the public URL string on success, or None with a printed
     error message if pyngrok is not installed or the tunnel fails.
     """
@@ -449,7 +453,13 @@ def start_ngrok_tunnel(port):
         if authtoken:
             conf.get_default().auth_token = authtoken
 
-        tunnel = ngrok.connect(port, "http", bind_tls=True)
+        # Use a reserved/static domain if one is configured
+        domain = os.getenv('NGROK_DOMAIN')
+        options = {}
+        if domain:
+            options['domain'] = domain
+
+        tunnel = ngrok.connect(port, "http", bind_tls=True, **options)
         return tunnel.public_url
     except ImportError:
         print(
