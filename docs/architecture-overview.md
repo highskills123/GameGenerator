@@ -35,15 +35,15 @@ Aibase follows a modular architecture with clear separation of concerns:
         │  ┌────────────────────────────────┐ │
         │  │  Translation Engine            │ │
         │  │  - Prompt Generation           │ │
-        │  │  - OpenAI API Client           │ │
+        │  │  - Ollama HTTP Client          │ │
         │  │  - Response Processing         │ │
         │  └────────────────────────────────┘ │
         └─────────────────┬───────────────────┘
                           │
         ┌─────────────────▼───────────────────┐
-        │       OpenAI API                    │
+        │       Ollama API                    │
         │  ┌────────────────────────────────┐ │
-        │  │  GPT-3.5-turbo / GPT-4         │ │
+        │  │  qwen2.5-coder:7b / llama3     │ │
         │  └────────────────────────────────┘ │
         └─────────────────────────────────────┘
 ```
@@ -55,7 +55,7 @@ Aibase follows a modular architecture with clear separation of concerns:
 **Location:** `aibase.py`
 
 **Responsibilities:**
-- Initialize OpenAI client
+- Initialize Ollama client
 - Manage language configurations
 - Generate prompts for different languages
 - Process and clean responses
@@ -72,7 +72,7 @@ class AibaseTranslator:
         """Main translation method"""
         # 1. Validate language
         # 2. Generate system and user prompts
-        # 3. Call OpenAI API
+        # 3. Call Ollama API
         # 4. Process response
         # 5. Clean markdown artifacts
         # 6. Return generated code
@@ -177,8 +177,8 @@ def translate():
       └─ Description + Target Language + Requirements
         │
         ▼
-4. OpenAI API Call
-   ├─ Send messages to GPT model
+4. Ollama API Call
+   ├─ Send request to Ollama model
    ├─ Apply temperature and max_tokens
    └─ Receive completion
         │
@@ -414,9 +414,7 @@ class TemplateGenerator:
 
 ### Unit Tests
 
-**Location:** `test_aibase.py`
-
-**Test Categories:**
+Tests cover:
 1. Initialization tests
 2. Language support tests
 3. Translation workflow tests (mocked)
@@ -424,8 +422,6 @@ class TemplateGenerator:
 5. Parameter validation tests
 
 ### Integration Tests
-
-**Location:** `test_api.py`
 
 **Test Categories:**
 1. API endpoint tests
@@ -447,7 +443,7 @@ For high-volume scenarios:
 
 ```python
 import asyncio
-from openai import AsyncOpenAI
+# Use aiohttp for async Ollama requests
 
 class AsyncTranslator(AibaseTranslator):
     async def translate_async(self, description, target_language):
@@ -495,7 +491,7 @@ def translate():
 ### Production Deployment
 
 ```
-Internet → Load Balancer → Nginx → Gunicorn → Flask App → OpenAI API
+Internet → Load Balancer → Nginx → Gunicorn → Flask App → Ollama API
                              ├─> Instance 1
                              ├─> Instance 2
                              └─> Instance N
@@ -533,7 +529,7 @@ Track:
 - Request count by language
 - Response times
 - Error rates
-- OpenAI API costs
+- Ollama model performance
 
 ## Future Enhancements
 

@@ -20,7 +20,7 @@ Thank you for your interest in contributing to Aibase's mobile framework feature
 - Python 3.7+
 - Git
 - GitHub account
-- OpenAI API key
+- Ollama installed (https://ollama.com)
 - (Optional) Flutter SDK for testing Flutter examples
 - (Optional) React Native environment for testing RN examples
 
@@ -66,14 +66,14 @@ pip install pytest black flake8
 
 ```bash
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env if you want to customize Ollama settings
 ```
 
 ### 4. Verify Setup
 
 ```bash
-# Run tests
-python test_aibase.py
+# Verify setup
+python aibase.py --help
 
 # Try generation
 python aibase.py -d "test" -l flutter-widget
