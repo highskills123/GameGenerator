@@ -194,11 +194,17 @@ def translate():
             'success': False,
             'error': str(e)
         }), 400
+    except RuntimeError as e:
+        app.logger.error(f"Translation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 503
     except Exception as e:
         app.logger.error(f"Translation error: {str(e)}")
         return jsonify({
             'success': False,
-            'error': 'Internal server error'
+            'error': str(e)
         }), 500
 
 
@@ -234,9 +240,12 @@ def generate_flutter_widget():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter widget generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"Flutter widget generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/generate/flutter/screen', methods=['POST'])
@@ -267,9 +276,12 @@ def generate_flutter_screen():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"Flutter screen generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/generate/flutter/app', methods=['POST'])
@@ -300,9 +312,12 @@ def generate_flutter_app():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"Flutter app generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ========== React Native Generation Endpoints ==========
@@ -337,9 +352,12 @@ def generate_react_native_component():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native component generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"React Native component generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/generate/react-native/screen', methods=['POST'])
@@ -370,9 +388,12 @@ def generate_react_native_screen():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"React Native screen generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/generate/react-native/app', methods=['POST'])
@@ -403,9 +424,12 @@ def generate_react_native_app():
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"React Native app generation error: {str(e)}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.errorhandler(404)
