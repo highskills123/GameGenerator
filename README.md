@@ -12,10 +12,10 @@ AI-powered Natural Language to Code Translator - Transform your ideas into worki
 > ```
 > git clone https://github.com/highskills123/Aibase.git
 > cd Aibase
-> git checkout copilot/resolve-merge-conflicts-pr-12
+> git checkout copilot/fix-ollama-integration
 > ```
 > Or download the latest ZIP directly (no git needed):  
-> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/fix-ollama-integration.zip**
 
 ## Overview
 
@@ -75,7 +75,30 @@ cp .env.example .env
 
 ## Usage
 
-### Web UI
+### One-command launcher (recommended)
+
+`startollamaserver.py` does everything in the right order — start Ollama, pull
+the model if needed, and expose the API over HTTPS via ngrok — in a single
+command:
+
+```bash
+# Full stack: Ollama + API server + public HTTPS URL
+python startollamaserver.py
+
+# Local only (no ngrok tunnel)
+python startollamaserver.py --no-ngrok
+
+# Custom port
+python startollamaserver.py --port 8080
+```
+
+What it does:
+1. Launches `ollama serve` in the background (skips this if Ollama is already running)
+2. Waits until Ollama is ready (polls `/api/version`)
+3. Checks whether the model is pulled; runs `ollama pull <model>` if not
+4. Starts `api_server.py --ngrok` → prints a public HTTPS URL you can share
+
+### Web UI (manual start)
 
 Start the server and open the web interface in any browser — including on mobile:
 
@@ -368,6 +391,43 @@ Copy `.env.example` to `.env` and adjust as needed:
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5-coder:7b
 ```
+
+## Troubleshooting
+
+### Ollama 404 / 503 errors
+
+If you see `Error during Ollama generation: 404 …` or the API returns `503`, the most common cause is that the model has not been pulled yet:
+
+```bash
+# Pull the default model (or whatever OLLAMA_MODEL is set to)
+ollama pull qwen2.5-coder:7b
+```
+
+The API server runs a startup connectivity check and prints a diagnostic line:
+
+```
+  Ollama status:  Ollama 0.16.3 reachable; model 'qwen2.5-coder:7b' available.
+```
+
+If it shows a warning instead, follow the printed instructions before making generation requests.
+
+**Other common causes:**
+
+| Symptom | Fix |
+|---|---|
+| `Cannot connect to Ollama` | Start Ollama: run `ollama serve` or open the Ollama app |
+| `model not found` | Pull the model: `ollama pull <model>` |
+| `OLLAMA_BASE_URL` wrong | Update `.env` — default is `http://localhost:11434` |
+
+### Configuring a different model
+
+Set `OLLAMA_MODEL` in your `.env` file:
+
+```
+OLLAMA_MODEL=llama3
+```
+
+Then pull it: `ollama pull llama3`
 
 ## Contributing
 
