@@ -1,43 +1,54 @@
 # Quick Start Guide
 
-## ⚡ Share with a friend — one command
+## ⚡ Share with a friend — quick steps
 
-```bash
-./start.sh --ngrok
+### Step 1 — Create your `.env` file
+
+Copy the example file and open it in Notepad (or any text editor):
+
+**Windows CMD:**
+```
+copy .env.example .env
+notepad .env
 ```
 
-> **What this does:** installs dependencies, checks Ollama is running, starts the web UI,
-> and opens a public HTTPS link you can send to anyone.
->
-> The link will look like this — copy it and send it to your friend:
-> ```
->   🌍 Public URL:   https://abc123.ngrok-free.app
->   Share this link with anyone — no router setup needed!
-> ```
-
-That's it!  
-On Windows run `python api_server.py --ngrok` instead (or use Git Bash for `./start.sh`).
-
-### Using a fixed / static ngrok domain
-
-If you have a reserved ngrok domain (e.g. `costless-dorthy-unmeanderingly.ngrok-free.dev`)
-and want the URL to be the **same every time you restart**, add it to your `.env` file:
-
+**Mac/Linux:**
 ```bash
-# In your .env file (copy .env.example if you haven't already):
-NGROK_AUTHTOKEN=your_authtoken_here          # required for static domains
+cp .env.example .env
+nano .env   # or open with any editor
+```
+
+Uncomment and fill in these two lines:
+```
+NGROK_AUTHTOKEN=your_authtoken_here
 NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
 ```
 
-Then start as normal:
+> Get your free authtoken at https://dashboard.ngrok.com/get-started/your-authtoken
 
-```bash
-./start.sh --ngrok
-# → 🌍 Public URL: https://costless-dorthy-unmeanderingly.ngrok-free.dev
+### Step 2 — Start the server
+
+**Windows (Command Prompt or PowerShell):**
+```
+start.bat --ngrok
 ```
 
-> **Note:** A static/reserved domain requires an ngrok account and an authtoken.
-> Get both for free at https://dashboard.ngrok.com.
+**Mac / Linux:**
+```bash
+./start.sh --ngrok
+```
+
+The startup output will show:
+```
+  🌍 Public URL:   https://costless-dorthy-unmeanderingly.ngrok-free.dev
+  Share this link with anyone — no router setup needed!
+```
+
+Send that link to your friend and they can use the full Aibase UI in their browser.
+
+> ⚠️ **Windows note:** Do **not** try to set variables like `NGROK_DOMAIN=value` directly
+> in the command prompt — that syntax only works on Linux/Mac. Use the `.env` file instead,
+> as shown above.
 
 ---
 
