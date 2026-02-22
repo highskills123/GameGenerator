@@ -1,5 +1,116 @@
 # Quick Start Guide
 
+## 📥 Get the LATEST code first
+
+> ⚠️ **Important:** The fixes are on the `copilot/resolve-merge-conflicts-pr-12` branch,
+> not `main`. Use one of these to get the correct version:
+
+**Option A — Download ZIP (easiest, no git needed):**  
+👉 **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+
+1. Click the link above — it downloads a ZIP file
+2. Right-click → **Extract All** → choose a folder (e.g. `C:\Users\high\Aibase`)
+3. Open Command Prompt and `cd` into it:
+   ```
+   cd C:\Users\high\Aibase\Aibase-copilot-resolve-merge-conflicts-pr-12
+   ```
+
+**Option B — git clone:**
+```
+git clone https://github.com/highskills123/Aibase.git
+cd Aibase
+git checkout copilot/resolve-merge-conflicts-pr-12
+```
+
+---
+
+## ⚡ Share with a friend — quick steps
+
+### Step 0 — Open Command Prompt IN the Aibase folder
+
+**If you used git clone:**
+```
+cd Aibase
+```
+
+**If you downloaded the ZIP** (extracted to e.g. `Downloads\Aibase-main`):
+```
+cd C:\Users\high\Downloads\Aibase-main
+```
+
+> **Tip:** You can also open File Explorer, navigate into the Aibase folder,
+> click the address bar, type `cmd`, and press Enter — this opens Command Prompt
+> already in the right folder.
+
+### Step 1 — Create your `.env` file
+
+**Windows CMD:**
+```
+copy .env.example .env
+notepad .env
+```
+
+**Mac/Linux:**
+```bash
+cp .env.example .env
+nano .env
+```
+
+Your `.env` file will look like this. You only need to do **two things**:
+
+1. **Remove the `#` in front of `NGROK_AUTHTOKEN`** and paste your token after `=`
+2. **Remove the `#` in front of `NGROK_DOMAIN`** — keep the domain exactly as it is
+
+```
+# Before (what the file looks like):
+# NGROK_AUTHTOKEN=paste_your_authtoken_here
+# NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
+
+# After (what you change it to):
+NGROK_AUTHTOKEN=2abc1xyz_your_real_token_here
+NGROK_DOMAIN=costless-dorthy-unmeanderingly.ngrok-free.dev
+```
+
+> **Do NOT change the domain name** — `costless-dorthy-unmeanderingly.ngrok-free.dev` is YOUR reserved domain, keep it exactly as-is.
+>
+> **Get your authtoken** (free) at: https://dashboard.ngrok.com/get-started/your-authtoken
+> — log in, copy the token, paste it after `NGROK_AUTHTOKEN=`
+
+Save the file and close Notepad.
+
+### Step 2 — Start the server
+
+Run this command in Command Prompt (Windows) or Terminal (Mac/Linux):
+
+```
+python api_server.py --ngrok
+```
+
+That's it — works on Windows, Mac, and Linux without any extra scripts.
+
+> Optional shortcuts if you prefer:
+> - **Mac/Linux:** `./start.sh --ngrok`
+> - **Windows (convenience script):** `run.bat --ngrok`
+
+The startup output will show:
+```
+  🌍 Public URL:   https://costless-dorthy-unmeanderingly.ngrok-free.dev
+  Share this link with anyone — no router setup needed!
+```
+
+Send that link to your friend and they can use the full Aibase UI in their browser.
+
+> ⚠️ **Keep this terminal window open!**  
+> The public link only works **while the server is running**.  
+> If you close the terminal (or your computer sleeps), the link returns a 404 error.  
+> To bring it back, just run `python api_server.py --ngrok` again.
+
+> ⚠️ **Windows note:** Do **not** try to set variables like `NGROK_DOMAIN=value` directly
+> in the command prompt — that syntax only works on Linux/Mac. Use the `.env` file instead,
+> as shown above.
+
+---
+
 ## Setup (One-time)
 
 1. **Install dependencies:**
@@ -152,6 +263,12 @@ print(code)
    - ✅ "create a function that handles empty strings and null values"
 
 ## Troubleshooting
+
+**Friend sees "HTTP 404" or "page not found" on the ngrok URL**
+- The server is not running on your computer — the link only works while `python api_server.py --ngrok` is running in your terminal
+- Reopen Command Prompt, `cd` into the Aibase folder, and run `python api_server.py --ngrok` again
+- Make sure you do **not** close the terminal window while your friend is using the site
+- If your computer went to sleep or restarted, run the command again — the ngrok tunnel reconnects automatically
 
 **Other devices can't connect to the server**
 - Make sure they are using your **local IP** (e.g. `http://192.168.1.42:5000/`), not `localhost`

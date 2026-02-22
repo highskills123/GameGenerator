@@ -400,6 +400,69 @@ a:hover { text-decoration: underline; }
   transform: translateX(-50%) translateY(0);
 }
 
+/* ── Mode tabs bar ── */
+.mode-tabs-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+}
+
+.mode-tabs {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.6rem 0 0;
+}
+
+.mode-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.5rem 1.1rem 0.65rem;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.mode-tab:hover { color: var(--text); background: var(--surface-alt); }
+
+.mode-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Mode panel wrapper ── */
+.mode-panel {
+  display: contents; /* transparent in layout — children use the grid */
+}
+
+.mode-panel.hidden { display: none; }
+
+/* ── Subform ── */
+.subform { margin-bottom: 0.25rem; }
+.subform .form-group input[type="text"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  padding: 0.75rem 0.9rem;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  width: 100%;
+}
+.subform .form-group input[type="text"]::placeholder { color: var(--text-muted); }
+.subform .form-group input[type="text"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 /* ── Footer ── */
 .site-footer {
   border-top: 1px solid var(--border);

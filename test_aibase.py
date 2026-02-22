@@ -158,6 +158,137 @@ def test_code_fence_stripping():
         return False
 
 
+def test_game_language_targets():
+    """Test that new Flame/game-asset language targets are present."""
+    print("\nTest 8: Flame/game-asset language targets")
+    print("-" * 50)
+
+    try:
+        languages = AibaseTranslator.SUPPORTED_LANGUAGES
+        for key in ('flame', 'flame-game', 'flame-component',
+                    'game-asset-sprite', 'game-asset-animation', 'game-tilemap'):
+            assert key in languages, f"Missing language key: {key}"
+        print(f"✓ All 6 new game/Flame language targets present")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_flame_prompt_selection():
+    """Test that _build_prompts returns Flame-specific prompts for flame keys."""
+    print("\nTest 9: Flame prompt selection")
+    print("-" * 50)
+
+    try:
+        translator = AibaseTranslator()
+        for key in ('flame', 'flame-game', 'flame-component'):
+            lang_name = AibaseTranslator.SUPPORTED_LANGUAGES[key]
+            sys_p, usr_p = translator._build_prompts("test desc", lang_name, True, key)
+            assert 'Flame' in sys_p or 'Flutter' in sys_p, \
+                f"Expected Flame/Flutter in system prompt for {key}"
+            assert 'Flame' in usr_p or 'flame' in usr_p.lower(), \
+                f"Expected flame content in user prompt for {key}"
+        print("✓ Flame prompt selection works correctly")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_game_asset_prompt_selection():
+    """Test that _build_prompts returns game-asset-specific prompts for game- keys."""
+    print("\nTest 10: Game-asset prompt selection")
+    print("-" * 50)
+
+    try:
+        translator = AibaseTranslator()
+        for key in ('game-asset-sprite', 'game-asset-animation', 'game-tilemap'):
+            lang_name = AibaseTranslator.SUPPORTED_LANGUAGES[key]
+            sys_p, usr_p = translator._build_prompts("test desc", lang_name, True, key)
+            assert 'game' in sys_p.lower() or 'asset' in sys_p.lower(), \
+                f"Expected game/asset in system prompt for {key}"
+            assert 'code' in usr_p.lower(), \
+                f"Expected 'code' in user prompt for {key}"
+        print("✓ Game-asset prompt selection works correctly")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_mobile_language_targets():
+    """Test that flutter/dart/react-native language targets are present."""
+    print("\nTest 11: Flutter/React Native language targets")
+    print("-" * 50)
+
+    try:
+        languages = AibaseTranslator.SUPPORTED_LANGUAGES
+        for key in ('flutter', 'dart', 'react-native'):
+            assert key in languages, f"Missing language key: {key}"
+        print("✓ All 3 mobile language targets present")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_flutter_generator():
+    """Test FlutterGenerator uses translator.translate() (Ollama-backed)."""
+    print("\nTest 12: FlutterGenerator integration")
+    print("-" * 50)
+
+    try:
+        from aibase import FlutterGenerator
+        from unittest.mock import Mock, patch
+
+        mock_resp = Mock()
+        mock_resp.json.return_value = {"response": "import 'package:flutter/material.dart';"}
+        mock_resp.raise_for_status = Mock()
+
+        with patch('aibase.requests.post', return_value=mock_resp):
+            translator = AibaseTranslator()
+            gen = translator.get_flutter_generator()
+            assert isinstance(gen, FlutterGenerator)
+            # Subsequent call returns the same instance (cached)
+            assert gen is translator.get_flutter_generator()
+            code = gen.generate_widget('StatelessWidget', 'MyWidget')
+            assert 'flutter' in code.lower() or 'import' in code.lower() or len(code) > 0
+        print("✓ FlutterGenerator works via Ollama translator")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_react_native_generator():
+    """Test ReactNativeGenerator uses translator.translate() (Ollama-backed)."""
+    print("\nTest 13: ReactNativeGenerator integration")
+    print("-" * 50)
+
+    try:
+        from aibase import ReactNativeGenerator
+        from unittest.mock import Mock, patch
+
+        mock_resp = Mock()
+        mock_resp.json.return_value = {"response": "import React from 'react';"}
+        mock_resp.raise_for_status = Mock()
+
+        with patch('aibase.requests.post', return_value=mock_resp):
+            translator = AibaseTranslator()
+            gen = translator.get_react_native_generator()
+            assert isinstance(gen, ReactNativeGenerator)
+            code = gen.generate_component('functional', 'MyComponent')
+            assert len(code) > 0
+        print("✓ ReactNativeGenerator works via Ollama translator")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
@@ -173,6 +304,12 @@ def run_all_tests():
         test_translation_with_mock_ollama,
         test_custom_parameters,
         test_code_fence_stripping,
+        test_game_language_targets,
+        test_flame_prompt_selection,
+        test_game_asset_prompt_selection,
+        test_mobile_language_targets,
+        test_flutter_generator,
+        test_react_native_generator,
     ]
 
     results = []

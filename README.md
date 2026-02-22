@@ -8,6 +8,15 @@
 
 AI-powered Natural Language to Code Translator - Transform your ideas into working code instantly!
 
+> **📥 Clone / Download the project:**
+> ```
+> git clone https://github.com/highskills123/Aibase.git
+> cd Aibase
+> git checkout copilot/resolve-merge-conflicts-pr-12
+> ```
+> Or download the latest ZIP directly (no git needed):  
+> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+
 ## Overview
 
 Aibase is an intelligent code generator that translates natural language descriptions into working code in multiple programming languages and mobile frameworks. Simply describe what you want in plain English, and Aibase will generate clean, efficient code for you.
@@ -27,18 +36,13 @@ Aibase is an intelligent code generator that translates natural language descrip
 ## Supported Languages
 
 ### General Purpose
-- Python
-- JavaScript
-- TypeScript
-- Java
-- C++
-- C#
-- Go
-- Rust
-- PHP
-- Ruby
-- Swift
-- Kotlin
+Python · JavaScript · TypeScript · Java · C++ · C# · Go · Rust · PHP · Ruby · Swift · Kotlin
+
+### Mobile / Flutter
+Flutter/Dart · Flutter Widget · Dart · React Native · React Native Component
+
+### Game Dev (Flame)
+Flame · Flame Complete Game · Flame Game Component · Game Sprite · Game Animation · Game Tilemap
 
 ### Mobile Frameworks
 - **Flutter/Dart**: Generate complete Flutter widgets (StatelessWidget, StatefulWidget)

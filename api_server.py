@@ -18,6 +18,19 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+
+@app.after_request
+def skip_ngrok_browser_warning(response):
+    """Tell ngrok to skip the browser interstitial warning page.
+
+    Without this, free-tier ngrok tunnels show a warning page to browser
+    visitors before redirecting them to the actual site.  Adding this header
+    to every response bypasses that page so friends can open the shared URL
+    directly.
+    """
+    response.headers['ngrok-skip-browser-warning'] = '1'
+    return response
+
 # Initialize translator
 translator = None
 
@@ -27,6 +40,27 @@ def get_translator():
     if translator is None:
         translator = AibaseTranslator()
     return translator
+
+
+def validate_request_data(data, required_fields):
+    """
+    Validate request data has required fields.
+
+    Args:
+        data (dict): Request data
+        required_fields (list): List of required field names
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not data:
+        return False, 'No JSON data provided'
+
+    for field in required_fields:
+        if field not in data or not data[field]:
+            return False, f'{field} is required'
+
+    return True, None
 
 
 @app.route('/', methods=['GET'])
@@ -45,7 +79,13 @@ def api_info():
         'endpoints': {
             'POST /api/translate': 'Translate natural language to code',
             'GET /api/languages': 'Get list of supported languages',
-            'GET /api/health': 'Health check endpoint'
+            'GET /api/health': 'Health check endpoint',
+            'POST /api/generate/flutter/widget': 'Generate Flutter widget',
+            'POST /api/generate/flutter/screen': 'Generate Flutter screen',
+            'POST /api/generate/flutter/app': 'Generate Flutter app',
+            'POST /api/generate/react-native/component': 'Generate React Native component',
+            'POST /api/generate/react-native/screen': 'Generate React Native screen',
+            'POST /api/generate/react-native/app': 'Generate React Native app boilerplate',
         }
     })
 
@@ -62,9 +102,11 @@ def health():
 @app.route('/api/languages', methods=['GET'])
 def get_languages():
     """Get list of supported programming languages."""
+    langs = AibaseTranslator.SUPPORTED_LANGUAGES
     return jsonify({
-        'languages': list(AibaseTranslator.SUPPORTED_LANGUAGES.keys()),
-        'count': len(AibaseTranslator.SUPPORTED_LANGUAGES)
+        'languages': list(langs.keys()),
+        'names': langs,
+        'count': len(langs)
     })
 
 
@@ -152,12 +194,242 @@ def translate():
             'success': False,
             'error': str(e)
         }), 400
+    except RuntimeError as e:
+        app.logger.error(f"Translation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 503
     except Exception as e:
         app.logger.error(f"Translation error: {str(e)}")
         return jsonify({
             'success': False,
-            'error': 'Internal server error'
+            'error': str(e)
         }), 500
+
+
+# ========== Flutter Generation Endpoints ==========
+
+@app.route('/api/generate/flutter/widget', methods=['POST'])
+def generate_flutter_widget():
+    """
+    Generate Flutter widget code.
+
+    Request body:
+    {
+        "widget_type": "StatelessWidget",
+        "name": "MyWidget",
+        "properties": {"title": "String"},       // optional
+        "state_requirements": {"counter": "int"} // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['widget_type', 'name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_flutter_generator().generate_widget(
+            widget_type=data['widget_type'],
+            name=data['name'],
+            properties=data.get('properties'),
+            state_requirements=data.get('state_requirements'),
+        )
+        return jsonify({'success': True, 'code': code, 'widget_name': data['name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter widget generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"Flutter widget generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generate/flutter/screen', methods=['POST'])
+def generate_flutter_screen():
+    """
+    Generate a complete Flutter screen.
+
+    Request body:
+    {
+        "screen_name": "HomeScreen",
+        "widgets": ["AppBar", "ListView"],  // optional
+        "navigation_setup": {"type": "named"} // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['screen_name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_flutter_generator().generate_screen(
+            screen_name=data['screen_name'],
+            widgets=data.get('widgets'),
+            navigation_setup=data.get('navigation_setup'),
+        )
+        return jsonify({'success': True, 'code': code, 'screen_name': data['screen_name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"Flutter screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generate/flutter/app', methods=['POST'])
+def generate_flutter_app():
+    """
+    Generate Flutter app boilerplate.
+
+    Request body:
+    {
+        "app_name": "MyApp",
+        "theme": {"primaryColor": "blue"}, // optional
+        "initial_route": "/home"           // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['app_name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_flutter_generator().generate_app(
+            app_name=data['app_name'],
+            theme=data.get('theme'),
+            initial_route=data.get('initial_route'),
+        )
+        return jsonify({'success': True, 'code': code, 'app_name': data['app_name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"Flutter app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"Flutter app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== React Native Generation Endpoints ==========
+
+@app.route('/api/generate/react-native/component', methods=['POST'])
+def generate_react_native_component():
+    """
+    Generate React Native component.
+
+    Request body:
+    {
+        "component_type": "functional",
+        "name": "MyComponent",
+        "props": {"title": "string"},   // optional
+        "hooks_needed": ["useState"]    // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['component_type', 'name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_react_native_generator().generate_component(
+            component_type=data['component_type'],
+            name=data['name'],
+            props=data.get('props'),
+            hooks_needed=data.get('hooks_needed'),
+        )
+        return jsonify({'success': True, 'code': code, 'component_name': data['name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native component generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"React Native component generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generate/react-native/screen', methods=['POST'])
+def generate_react_native_screen():
+    """
+    Generate a complete React Native screen.
+
+    Request body:
+    {
+        "screen_name": "HomeScreen",
+        "components": ["Header", "Footer"],   // optional
+        "navigation_setup": {"type": "stack"} // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['screen_name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_react_native_generator().generate_screen(
+            screen_name=data['screen_name'],
+            components=data.get('components'),
+            navigation_setup=data.get('navigation_setup'),
+        )
+        return jsonify({'success': True, 'code': code, 'screen_name': data['screen_name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"React Native screen generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/generate/react-native/app', methods=['POST'])
+def generate_react_native_app():
+    """
+    Generate React Native app boilerplate.
+
+    Request body:
+    {
+        "app_name": "MyApp",
+        "typescript": true,        // optional, default true
+        "initial_screen": "Home"   // optional
+    }
+    """
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['app_name'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        trans = get_translator()
+        code = trans.get_react_native_generator().generate_app(
+            app_name=data['app_name'],
+            typescript=data.get('typescript', True),
+            initial_screen=data.get('initial_screen'),
+        )
+        return jsonify({'success': True, 'code': code, 'app_name': data['app_name']})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 422
+    except RuntimeError as e:
+        app.logger.error(f"React Native app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        app.logger.error(f"React Native app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.errorhandler(404)
@@ -203,6 +475,10 @@ def start_ngrok_tunnel(port):
     """
     Open a public ngrok HTTPS tunnel to *port* using pyngrok.
 
+    If NGROK_DOMAIN is set in the environment (or .env), ngrok will bind to
+    that static/reserved domain (e.g. costless-dorthy-unmeanderingly.ngrok-free.dev)
+    so the URL is always the same across restarts.
+
     Returns the public URL string on success, or None with a printed
     error message if pyngrok is not installed or the tunnel fails.
     """
@@ -214,7 +490,13 @@ def start_ngrok_tunnel(port):
         if authtoken:
             conf.get_default().auth_token = authtoken
 
-        tunnel = ngrok.connect(port, "http", bind_tls=True)
+        # Use a reserved/static domain if one is configured
+        domain = os.getenv('NGROK_DOMAIN')
+        options = {}
+        if domain:
+            options['domain'] = domain
+
+        tunnel = ngrok.connect(port, "http", bind_tls=True, **options)
         return tunnel.public_url
     except ImportError:
         print(
@@ -252,7 +534,8 @@ def main():
         help='Run in debug mode'
     )
     parser.add_argument(
-        '--ngrok',
+        '--ngrok', '--ngrokk',   # accept common typo --ngrokk
+        dest='ngrok',
         action='store_true',
         help=(
             'Open a public ngrok tunnel so anyone on the internet can access '
@@ -279,7 +562,10 @@ def main():
     if ngrok_url:
         ngrok_line = (
             f"  🌍 Public URL:   {ngrok_url}\n"
-            f"  Share this link with anyone — no router setup needed!"
+            f"  Share this link with anyone — no router setup needed!\n\n"
+            f"  ⚠️  IMPORTANT: This window must stay open.\n"
+            f"  If you close this terminal, the link stops working (HTTP 404).\n"
+            f"  Your friend will see a 404 error if the server is not running."
         )
     else:
         ngrok_line = "  Public URL:     (ngrok not active — run with --ngrok to enable)"
@@ -307,6 +593,16 @@ Endpoints:
   GET  /api/health         - Health check
   GET  /api/languages      - List supported languages
   POST /api/translate      - Translate natural language to code
+
+  Flutter Generation:
+  POST /api/generate/flutter/widget          - Generate Flutter widget
+  POST /api/generate/flutter/screen          - Generate Flutter screen
+  POST /api/generate/flutter/app             - Generate Flutter app
+
+  React Native Generation:
+  POST /api/generate/react-native/component  - Generate React Native component
+  POST /api/generate/react-native/screen     - Generate React Native screen
+  POST /api/generate/react-native/app        - Generate React Native app
 
 Press Ctrl+C to stop the server
 """)
