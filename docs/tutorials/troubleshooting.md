@@ -5,7 +5,7 @@ This guide helps you resolve common issues when generating Flutter and React Nat
 ## Table of Contents
 
 1. [Installation Issues](#installation-issues)
-2. [API Key Problems](#api-key-problems)
+2. [Ollama Connection Problems](#ollama-connection-problems)
 3. [Generation Issues](#generation-issues)
 4. [Flutter-Specific Issues](#flutter-specific-issues)
 5. [React Native-Specific Issues](#react-native-specific-issues)
@@ -45,73 +45,51 @@ ERROR: Could not find a version that satisfies the requirement...
 
 **Error:**
 ```
-ModuleNotFoundError: No module named 'openai'
+ModuleNotFoundError: No module named 'flask'
 ```
 
 **Solution:**
 ```bash
 # Ensure you're in the correct environment
-pip list | grep openai
+pip list | grep flask
 
 # Reinstall if missing
 pip install -r requirements.txt
 ```
 
-## API Key Problems
+## Ollama Connection Problems
 
-### Problem: API key not found
+### Problem: Cannot connect to Ollama
 
 **Error:**
 ```
-ValueError: OpenAI API key not found
+RuntimeError: Cannot connect to Ollama at http://localhost:11434
 ```
 
 **Solutions:**
 
-1. **Check .env file exists:**
+1. **Start Ollama:**
    ```bash
-   ls -la .env
+   ollama serve
    ```
+   Or open the Ollama desktop app.
 
-2. **Create .env if missing:**
+2. **Check Ollama is running:**
    ```bash
-   cp .env.example .env
-   # Edit .env and add your key
+   curl http://localhost:11434/api/version
    ```
 
-3. **Verify .env content:**
-   ```bash
-   cat .env
-   # Should contain: OPENAI_API_KEY=your_key_here
-   ```
-
-4. **Pass key directly:**
-   ```python
-   from aibase import AibaseTranslator
-   translator = AibaseTranslator(api_key="your-key")
-   ```
-
-### Problem: Invalid API key
+### Problem: Model not found
 
 **Error:**
 ```
-openai.error.AuthenticationError: Invalid API key
+RuntimeError: Ollama returned 404
 ```
 
-**Solutions:**
-
-1. **Check key format:**
-   - Should start with `sk-`
-   - No spaces or quotes in .env
-
-2. **Regenerate key:**
-   - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
-   - Create new key
-   - Update .env
-
-3. **Check account status:**
-   - Ensure OpenAI account is active
-   - Check billing is set up
+**Solution:**
+```bash
+ollama pull qwen2.5-coder:7b
+```
 
 ## Generation Issues
 
@@ -138,9 +116,10 @@ Generated code is empty or None
    python aibase.py -d "..." -l flutter-widget --max-tokens 3000
    ```
 
-3. **Check API quota:**
-   - Verify OpenAI account has credits
-   - Check rate limits
+3. **Check Ollama is running:**
+   ```bash
+   curl http://localhost:11434/api/version
+   ```
 
 ### Problem: Generation is slow
 
@@ -148,14 +127,14 @@ Generated code is empty or None
 - Complex description
 - Large max_tokens
 - Network latency
-- OpenAI API load
+- Ollama model loading
 
 **Solutions:**
 
 1. **Simplify description**
 2. **Reduce max_tokens**
-3. **Use gpt-3.5-turbo** (faster than gpt-4)
-4. **Check internet connection**
+3. **Use a smaller model** like `qwen2.5-coder:3b`
+4. **Check Ollama is running**
 
 ### Problem: Timeout errors
 
@@ -166,16 +145,14 @@ Timeout waiting for response
 
 **Solutions:**
 
-1. **Increase timeout:**
-   ```python
-   import openai
-   openai.api_timeout = 60  # Increase timeout
-   ```
+1. **Reduce max_tokens** - the model may be generating a large output
 
 2. **Retry with simpler description**
 
-3. **Check OpenAI status:**
-   Visit [OpenAI Status Page](https://status.openai.com/)
+3. **Check Ollama is running:**
+   ```bash
+   ollama ps
+   ```
 
 ## Flutter-Specific Issues
 
@@ -546,11 +523,11 @@ Access to fetch blocked by CORS policy
 
 ## Performance Issues
 
-### Problem: High API costs
+### Problem: High generation costs
 
 **Solutions:**
 
-1. **Use gpt-3.5-turbo** (cheaper than gpt-4)
+1. **Use a smaller model** like `qwen2.5-coder:3b`
 
 2. **Reduce max_tokens:**
    ```bash
@@ -587,7 +564,7 @@ Rate limit exceeded
                raise
    ```
 
-3. **Upgrade OpenAI plan**
+3. **Use a faster/smaller Ollama model**
 
 ## Getting Help
 

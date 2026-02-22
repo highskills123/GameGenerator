@@ -22,7 +22,7 @@ Aibase can generate React Native components, screens, and complete applications 
 Before you start, make sure you have:
 
 1. **Aibase installed** - Follow the main [README](../README.md) for installation
-2. **OpenAI API key** - Set in your `.env` file
+2. **Ollama running** - Install from https://ollama.com and pull the model: `ollama pull qwen2.5-coder:7b`
 3. **React Native environment** (optional, for running generated code) - [Set up React Native](https://reactnative.dev/docs/environment-setup)
 
 ## Installation
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 
 # Set up your API key
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env to customize Ollama settings (optional)
 ```
 
 ## Basic Usage

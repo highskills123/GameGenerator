@@ -99,7 +99,7 @@ Content-Type: application/json
   "description": "your natural language description",
   "language": "flutter-widget",
   "include_comments": true,
-  "model": "gpt-3.5-turbo",
+  "model": "qwen2.5-coder:7b",
   "temperature": 0.7,
   "max_tokens": 2000
 }
@@ -112,7 +112,7 @@ Content-Type: application/json
 | description | string | Yes | - | Natural language description |
 | language | string | No | "python" | Target language (see options below) |
 | include_comments | boolean | No | true | Include code comments |
-| model | string | No | "gpt-3.5-turbo" | OpenAI model |
+| model | string | No | "qwen2.5-coder:7b" | Ollama model |
 | temperature | float | No | 0.7 | Creativity (0.0-1.0) |
 | max_tokens | integer | No | 2000 | Maximum response length |
 
@@ -603,15 +603,15 @@ def validate_request(description, language):
 
 **Solution:** Use one of the supported languages from `/api/languages`.
 
-#### 3. API Rate Limit (OpenAI)
+#### 3. Ollama Not Running
 ```json
 {
   "success": false,
-  "error": "Rate limit exceeded"
+  "error": "Cannot connect to Ollama"
 }
 ```
 
-**Solution:** Implement retry with exponential backoff, or upgrade OpenAI plan.
+**Solution:** Start Ollama with `ollama serve`.
 
 #### 4. Timeout
 **Solution:** Increase timeout or reduce complexity:
@@ -653,7 +653,7 @@ curl -X POST http://localhost:5000/api/translate \
   -d '{
     "description": "create a complex Flutter app",
     "language": "flutter",
-    "model": "gpt-4",
+    "model": "llama3",
     "max_tokens": 4000
   }'
 ```
@@ -678,7 +678,7 @@ response = requests.post(url, json={
 
 ## Security Considerations
 
-1. **API Key Protection**: Never expose your OpenAI API key
+1. **Server Protection**: Never expose your API server to the public internet without authentication
 2. **Input Validation**: Validate all user inputs before sending to API
 3. **Rate Limiting**: Implement rate limiting in production
 4. **HTTPS**: Always use HTTPS in production

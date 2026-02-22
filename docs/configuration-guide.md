@@ -36,8 +36,9 @@ This guide covers all configuration options for using Aibase to generate Flutter
 Create a `.env` file in the root directory:
 
 ```bash
-# Required
-OPENAI_API_KEY=your_openai_api_key_here
+# Ollama Settings
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5-coder:7b
 
 # Optional API Server Settings
 API_HOST=0.0.0.0
@@ -48,12 +49,13 @@ API_DEBUG=false
 DISCORD_BOT_TOKEN=your_discord_token_here
 ```
 
-### OpenAI API Key
+### Ollama Setup
 
-1. Sign up at [OpenAI Platform](https://platform.openai.com/)
-2. Navigate to API Keys section
-3. Create new secret key
-4. Add to `.env` file
+1. Install Ollama from [https://ollama.com](https://ollama.com)
+2. Pull the default model:
+   ```bash
+   ollama pull qwen2.5-coder:7b
+   ```
 
 **Security Note:** Never commit `.env` file to version control.
 
@@ -117,7 +119,7 @@ def translate():
 
 | Parameter | Type | Default | Range | Description |
 |-----------|------|---------|-------|-------------|
-| model | string | gpt-3.5-turbo | - | OpenAI model to use |
+| model | string | qwen2.5-coder:7b | - | Ollama model to use |
 | temperature | float | 0.7 | 0.0-1.0 | Creativity level |
 | max_tokens | integer | 2000 | 1-4096 | Maximum response length |
 
@@ -143,27 +145,33 @@ def translate():
 
 ### Model Selection
 
-#### gpt-3.5-turbo (Default)
+#### qwen2.5-coder:7b (Default)
 - **Speed:** Fast
-- **Cost:** Low
+- **Cost:** Free (local)
 - **Quality:** Good
-- **Best for:** Most use cases, rapid development
+- **Best for:** Most use cases, code generation
 
-#### gpt-4
-- **Speed:** Slower
-- **Cost:** Higher
-- **Quality:** Excellent
-- **Best for:** Complex components, advanced features
+#### llama3
+- **Speed:** Moderate
+- **Cost:** Free (local)
+- **Quality:** Good
+- **Best for:** General-purpose tasks
+
+#### codellama
+- **Speed:** Moderate
+- **Cost:** Free (local)
+- **Quality:** Good
+- **Best for:** Code-focused tasks
 
 ### Usage Examples
 
 #### CLI
 ```bash
-# Use GPT-4 with low temperature
+# Use llama3 with low temperature
 python aibase.py \
   -d "create a Flutter widget" \
   -l flutter-widget \
-  --model gpt-4 \
+  --model llama3 \
   --temperature 0.3 \
   --max-tokens 3000
 ```
@@ -175,7 +183,7 @@ curl -X POST http://localhost:5000/api/translate \
   -d '{
     "description": "create a React Native component",
     "language": "react-native-component",
-    "model": "gpt-4",
+    "model": "llama3",
     "temperature": 0.5,
     "max_tokens": 2500
   }'
@@ -186,7 +194,7 @@ curl -X POST http://localhost:5000/api/translate \
 from aibase import AibaseTranslator
 
 translator = AibaseTranslator(
-    model="gpt-4",
+    model="llama3",
     temperature=0.5,
     max_tokens=3000
 )
@@ -218,7 +226,7 @@ code = translator.translate(
     "language": "flutter-widget",
     "temperature": 0.4,
     "max_tokens": 3000,
-    "model": "gpt-4"
+    "model": "llama3"
 }
 ```
 
@@ -228,7 +236,7 @@ code = translator.translate(
     "language": "flutter",
     "temperature": 0.6,
     "max_tokens": 4000,
-    "model": "gpt-4"
+    "model": "llama3"
 }
 ```
 
@@ -259,7 +267,7 @@ Be specific about:
     "language": "react-native-component",
     "temperature": 0.4,
     "max_tokens": 3000,
-    "model": "gpt-4"
+    "model": "llama3"
 }
 ```
 
@@ -269,7 +277,7 @@ Be specific about:
     "language": "react-native",
     "temperature": 0.6,
     "max_tokens": 4000,
-    "model": "gpt-4"
+    "model": "llama3"
 }
 ```
 
@@ -293,8 +301,8 @@ Specify:
    - Full apps: 3000-4000 tokens
 
 2. **Choose Right Model**
-   - Use gpt-3.5-turbo for simple tasks
-   - Use gpt-4 only for complex tasks
+   - Use default qwen2.5-coder:7b for most tasks
+   - Use llama3 for general-purpose tasks
 
 3. **Optimize Descriptions**
    - Be specific but concise
@@ -402,7 +410,7 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
     restart: unless-stopped
     
   nginx:
@@ -448,7 +456,7 @@ server {
 #### Development
 ```bash
 # .env.development
-OPENAI_API_KEY=your_key
+OLLAMA_BASE_URL=http://localhost:11434
 API_DEBUG=true
 API_HOST=localhost
 API_PORT=5000
@@ -457,7 +465,7 @@ API_PORT=5000
 #### Production
 ```bash
 # .env.production
-OPENAI_API_KEY=your_key
+OLLAMA_BASE_URL=http://localhost:11434
 API_DEBUG=false
 API_HOST=0.0.0.0
 API_PORT=5000
@@ -496,14 +504,14 @@ Add comprehensive health check:
 @app.route('/api/health', methods=['GET'])
 def health():
     try:
-        # Test OpenAI connection
+        # Test Ollama connection
         translator = AibaseTranslator()
         
         return jsonify({
             "status": "healthy",
             "service": "aibase-api",
             "version": "1.0.0",
-            "openai_configured": True
+            "ollama_configured": True
         })
     except Exception as e:
         return jsonify({
@@ -566,12 +574,12 @@ def health():
 
 **Slow Responses:**
 - Reduce max_tokens
-- Use gpt-3.5-turbo instead of gpt-4
+- Ensure Ollama is running locally
 - Implement caching
 
 **Rate Limit Errors:**
 - Add retry logic with backoff
-- Upgrade OpenAI plan
+- Reduce request frequency
 - Implement request queuing
 
 ## Next Steps

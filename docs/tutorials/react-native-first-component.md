@@ -12,7 +12,7 @@ This step-by-step tutorial will guide you through generating your first React Na
 ## Prerequisites
 
 - Aibase installed ([Installation Guide](../README.md))
-- OpenAI API key configured
+- Ollama installed and running with model pulled (see README)
 - (Optional) React Native environment for running components
 
 ## Step 1: Verify Setup

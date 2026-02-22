@@ -22,7 +22,7 @@ Aibase can generate Flutter widgets, Dart code, and complete Flutter application
 Before you start, make sure you have:
 
 1. **Aibase installed** - Follow the main [README](../README.md) for installation
-2. **OpenAI API key** - Set in your `.env` file
+2. **Ollama running** - Install from https://ollama.com and pull the model: `ollama pull qwen2.5-coder:7b`
 3. **Flutter SDK** (optional, for running generated code) - [Install Flutter](https://flutter.dev/docs/get-started/install)
 
 ## Installation
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 
 # Set up your API key
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env to customize Ollama settings (optional)
 ```
 
 ## Basic Usage
@@ -337,7 +337,7 @@ dependencies:
 python aibase.py \
   -d "create a Flutter widget" \
   -l flutter-widget \
-  --model gpt-4 \
+  --model llama3 \
   --temperature 0.5 \
   --max-tokens 3000 \
   -o output.dart
