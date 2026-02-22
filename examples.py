@@ -61,22 +61,19 @@ def example_complex():
 
 
 if __name__ == '__main__':
-    # Note: Make sure to set OPENAI_API_KEY in your .env file
-    
     print("Aibase Examples")
     print("=" * 50)
-    
+
     # Run examples
     try:
         example_simple()
         # Uncomment to run more examples:
         # example_multiple_languages()
         # example_complex()
-        
-    except ValueError as e:
+
+    except (RuntimeError, ValueError) as e:
         print(f"Error: {e}")
-        print("\nMake sure to:")
-        print("1. Copy .env.example to .env")
-        print("2. Add your OpenAI API key to the .env file")
+        print("\nMake sure Ollama is running and the model is pulled:")
+        print("  ollama pull qwen2.5-coder:7b")
     except Exception as e:
         print(f"Unexpected error: {e}")

@@ -5,7 +5,8 @@ REST API interface for the AI code translator
 """
 
 import os
-from flask import Flask, request, jsonify
+import socket
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 from aibase import AibaseTranslator
@@ -30,7 +31,13 @@ def get_translator():
 
 @app.route('/', methods=['GET'])
 def index():
-    """API root endpoint."""
+    """Serve the Aibase web UI."""
+    return render_template('index.html')
+
+
+@app.route('/api/info', methods=['GET'])
+def api_info():
+    """JSON description of available API endpoints."""
     return jsonify({
         'name': 'Aibase API',
         'version': '1.0.0',
@@ -69,11 +76,11 @@ def translate():
     Request body:
     {
         "description": "natural language description",
-        "language": "python",  // optional, defaults to python
-        "include_comments": true,  // optional, defaults to true
-        "model": "gpt-3.5-turbo",  // optional
-        "temperature": 0.7,  // optional
-        "max_tokens": 2000  // optional
+        "language": "python",       // optional, defaults to python
+        "include_comments": true,   // optional, defaults to true
+        "model": "qwen2.5-coder:7b", // optional, overrides OLLAMA_MODEL
+        "temperature": 0.7,         // optional
+        "max_tokens": 2000          // optional
     }
     
     Response:
@@ -171,6 +178,56 @@ def internal_error(e):
     }), 500
 
 
+def get_local_ip():
+    """Return the machine's primary local-network IP address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def check_provider_config():
+    """Return a status string about the Ollama configuration for the startup banner."""
+    ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    model = os.getenv('OLLAMA_MODEL', 'qwen2.5-coder:7b')
+    return (
+        f'  Provider:       Ollama  ✓ (free, no API key needed)\n'
+        f'  Ollama URL:     {ollama_url}\n'
+        f'  Model:          {model}'
+    )
+
+
+def start_ngrok_tunnel(port):
+    """
+    Open a public ngrok HTTPS tunnel to *port* using pyngrok.
+
+    Returns the public URL string on success, or None with a printed
+    error message if pyngrok is not installed or the tunnel fails.
+    """
+    try:
+        from pyngrok import ngrok, conf
+
+        # Use authtoken from environment if provided
+        authtoken = os.getenv('NGROK_AUTHTOKEN')
+        if authtoken:
+            conf.get_default().auth_token = authtoken
+
+        tunnel = ngrok.connect(port, "http", bind_tls=True)
+        return tunnel.public_url
+    except ImportError:
+        print(
+            "\n  ⚠  pyngrok is not installed. Run:\n"
+            "       pip install pyngrok\n"
+            "  then restart the server.\n"
+        )
+        return None
+    except Exception as exc:
+        print(f"\n  ⚠  Could not start ngrok tunnel: {exc}\n")
+        return None
+
+
 def main():
     """Run the API server."""
     import argparse
@@ -194,20 +251,59 @@ def main():
         action='store_true',
         help='Run in debug mode'
     )
-    
+    parser.add_argument(
+        '--ngrok',
+        action='store_true',
+        help=(
+            'Open a public ngrok tunnel so anyone on the internet can access '
+            'the server. Requires pyngrok (pip install pyngrok). Optionally '
+            'set NGROK_AUTHTOKEN in .env for longer sessions.'
+        )
+    )
+
     args = parser.parse_args()
-    
+
+    local_ip = get_local_ip()
+    lan_line = (
+        f"  Local network:  http://{local_ip}:{args.port}/\n  (anyone on your Wi-Fi/LAN can use this URL)"
+        if local_ip else
+        "  Local network:  (could not detect local IP)"
+    )
+
+    # Start ngrok tunnel before Flask so the URL is ready to print
+    ngrok_url = None
+    if args.ngrok:
+        print("  Starting ngrok tunnel…", flush=True)
+        ngrok_url = start_ngrok_tunnel(args.port)
+
+    if ngrok_url:
+        ngrok_line = (
+            f"  🌍 Public URL:   {ngrok_url}\n"
+            f"  Share this link with anyone — no router setup needed!"
+        )
+    else:
+        ngrok_line = "  Public URL:     (ngrok not active — run with --ngrok to enable)"
+
+    provider_info = check_provider_config()
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                    Aibase API Server                         ║
 ╚══════════════════════════════════════════════════════════════╝
 
-Server starting...
-URL: http://{args.host}:{args.port}
+{provider_info}
+
+Server running!  Open one of these URLs in a browser:
+
+  This computer:  http://localhost:{args.port}/
+{lan_line}
+{ngrok_line}
+
 Debug mode: {args.debug}
 
 Endpoints:
-  GET  /                   - API information
+  GET  /                   - Web UI (browser)
+  GET  /api/info           - API information (JSON)
   GET  /api/health         - Health check
   GET  /api/languages      - List supported languages
   POST /api/translate      - Translate natural language to code

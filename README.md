@@ -11,8 +11,9 @@ Aibase is an intelligent code generator that translates natural language descrip
 - 🚀 **Multi-Language Support**: Generate code in Python, JavaScript, Java, C++, Go, Rust, TypeScript, and more
 - 💬 **Natural Language Input**: Describe what you want in plain English
 - 🎯 **Interactive & CLI Modes**: Use interactively or integrate into your workflow
+- 🌍 **Web UI**: Responsive browser interface — works on desktop, tablet, and phone
 - 📝 **Smart Code Generation**: Produces clean, well-commented, production-ready code
-- ⚡ **Fast & Efficient**: Powered by OpenAI's GPT models
+- ⚡ **Fast & Efficient**: Powered by local Ollama models (free, no API key required)
 - 🌐 **REST API**: Full-featured API for integrations
 - 🤖 **Bot-Ready**: Easy to integrate with Discord, Telegram, Slack, and other platforms
 
@@ -44,13 +45,79 @@ cd Aibase
 pip install -r requirements.txt
 ```
 
-3. Set up your OpenAI API key:
+3. Install and start Ollama (free, no API key required):
+```bash
+# Install Ollama from https://ollama.com
+# Then pull the default model:
+ollama pull qwen2.5-coder:7b
+```
+
+4. (Optional) Copy `.env.example` to `.env` to customise settings:
 ```bash
 cp .env.example .env
-# Edit .env and add your OpenAI API key
 ```
 
 ## Usage
+
+### Web UI
+
+Start the server and open the web interface in any browser — including on mobile:
+
+```bash
+python api_server.py
+```
+
+The startup output shows you exactly which URLs to use:
+
+```
+  This computer:  http://localhost:5000/
+  Local network:  http://192.168.1.42:5000/
+  (anyone on your Wi-Fi/LAN can use this URL)
+  Public URL:     (ngrok not active — run with --ngrok to enable)
+```
+
+- **Same computer** → `http://localhost:5000/`
+- **Other devices on the same Wi-Fi or LAN** → `http://<your-local-IP>:5000/`
+- **Anyone on the internet** → see [Sharing over the internet](#sharing-over-the-internet) below
+
+Once the page loads:
+- Type a description of what you want to build
+- Choose a target language from the dropdown
+- Toggle comments on or off
+- Click **Generate Code**
+- Copy the result to your clipboard or download it as a file
+
+### Sharing over the internet
+
+`localhost` is only reachable from **your own machine**. The easiest way to share Aibase with anyone, anywhere is the built-in `--ngrok` flag:
+
+**Option A — built-in ngrok tunnel (easiest):**
+```bash
+# Install ngrok support (one-time)
+pip install pyngrok
+
+# Start server with automatic public tunnel
+python api_server.py --ngrok
+```
+
+The startup banner shows a shareable public link:
+
+```
+  🌍 Public URL:   https://abc123.ngrok-free.app
+  Share this link with anyone — no router setup needed!
+```
+
+> **Optional:** Sign up free at https://ngrok.com and add `NGROK_AUTHTOKEN=your_token` to
+> `.env` to remove the 2-hour session limit.
+
+**Option B — router port forwarding:**
+1. Log in to your router's admin page (usually `http://192.168.1.1`)
+2. Add a port-forwarding rule: external port `<PORT>` → your computer's local IP, port `<PORT>`
+   (replace `<PORT>` with your configured port, default `5000`)
+3. Find your public IP at https://whatismyip.com and share `http://<public-IP>:<PORT>/`
+
+> **Note:** When sharing publicly, anyone with the link can generate code using your
+> machine's resources. Stop the server with `Ctrl+C` when you are done.
 
 ### Interactive Mode
 
@@ -109,7 +176,7 @@ python examples.py
 ## How It Works
 
 1. **Input**: You provide a natural language description of what you want
-2. **Processing**: Aibase uses OpenAI's GPT models to understand your requirements
+2. **Processing**: Aibase sends your description to a local Ollama model
 3. **Generation**: The AI generates clean, efficient code in your target language
 4. **Output**: You receive production-ready code with helpful comments
 
@@ -137,7 +204,8 @@ python api_server.py --host 0.0.0.0 --port 8080
 
 ### API Endpoints
 
-- `GET /` - API information
+- `GET /` - Web UI
+- `GET /api/info` - API information (JSON)
 - `GET /api/health` - Health check
 - `GET /api/languages` - List supported languages
 - `POST /api/translate` - Translate natural language to code
@@ -187,15 +255,16 @@ See [discord_bot.py](discord_bot.py) for the implementation and [API.md](API.md)
 ## Requirements
 
 - Python 3.7+
-- OpenAI API key
+- [Ollama](https://ollama.com) running locally with `qwen2.5-coder:7b` pulled
 - Dependencies listed in `requirements.txt`
 
 ## Configuration
 
-Create a `.env` file with your OpenAI API key:
+Copy `.env.example` to `.env` and adjust as needed:
 
 ```
-OPENAI_API_KEY=your_openai_api_key_here
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5-coder:7b
 ```
 
 ## Contributing
@@ -212,7 +281,7 @@ This project is open source and available under the MIT License.
 
 ## Disclaimer
 
-This tool uses OpenAI's API and requires a valid API key. API usage is subject to OpenAI's pricing and terms of service.
+Aibase runs fully locally using [Ollama](https://ollama.com) — no API key required, no external services.
 
 ## Support
 

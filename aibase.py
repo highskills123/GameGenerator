@@ -6,8 +6,8 @@ A tool that translates natural language descriptions into working code.
 
 import os
 import sys
+import requests
 from dotenv import load_dotenv
-from openai import OpenAI
 from colorama import Fore, Style, init
 
 # Initialize colorama for colored terminal output
@@ -19,12 +19,18 @@ load_dotenv()
 
 class AibaseTranslator:
     """Main class for translating natural language to code."""
-    
-    # Default model and generation parameters
-    DEFAULT_MODEL = "gpt-3.5-turbo"
+
+    # Provider
+    PROVIDER_OLLAMA = 'ollama'
+
+    # Default generation parameters
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_MAX_TOKENS = 2000
-    
+
+    # Ollama defaults
+    DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
+    DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:7b'
+
     SUPPORTED_LANGUAGES = {
         'python': 'Python',
         'javascript': 'JavaScript',
@@ -39,37 +45,84 @@ class AibaseTranslator:
         'swift': 'Swift',
         'kotlin': 'Kotlin'
     }
-    
-    def __init__(self, api_key=None, model=None, temperature=None, max_tokens=None):
+
+    @staticmethod
+    def resolve_provider(provider=None):
+        """Always returns 'ollama' — the only supported provider."""
+        return AibaseTranslator.PROVIDER_OLLAMA
+
+    def __init__(self, model=None, temperature=None, max_tokens=None, **_ignored):
         """
-        Initialize the translator with OpenAI API key.
-        
+        Initialize the translator.
+
         Args:
-            api_key (str): OpenAI API key (defaults to OPENAI_API_KEY env var)
-            model (str): Model to use (defaults to gpt-3.5-turbo)
-            temperature (float): Temperature for generation (defaults to 0.7)
-            max_tokens (int): Maximum tokens to generate (defaults to 2000)
+            model (str): Ollama model to use (default: qwen2.5-coder:7b).
+            temperature (float): Temperature for generation (default: 0.7).
+            max_tokens (int): Maximum tokens to generate (default: 2000).
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        if not self.api_key:
-            raise ValueError(
-                "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
-                "or pass it to the constructor."
-            )
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = model or self.DEFAULT_MODEL
+        self.provider = self.PROVIDER_OLLAMA
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
+        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
+        self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
     
+    def _build_prompts(self, description, lang_name, include_comments):
+        """Build system and user prompts for code generation."""
+        system_prompt = (
+            f"You are an expert programmer that translates natural language descriptions "
+            f"into clean, efficient, and well-structured {lang_name} code. "
+            f"Provide only the code without additional explanations unless specifically asked. "
+            f"{'Include helpful comments to explain the code.' if include_comments else 'Minimize comments.'}"
+        )
+        user_prompt = (
+            f"Convert the following natural language description into {lang_name} code:\n\n"
+            f"{description}\n\n"
+            f"Provide complete, working code that can be run or used directly."
+        )
+        return system_prompt, user_prompt
+
+    @staticmethod
+    def _strip_code_fences(text):
+        """Remove surrounding markdown code fences if present."""
+        if text.startswith('```'):
+            lines = text.split('\n')
+            if len(lines) > 2 and lines[-1].strip() == '```':
+                text = '\n'.join(lines[1:-1])
+        return text
+
+    def _generate_ollama(self, system_prompt, user_prompt):
+        """Generate code using the local Ollama HTTP API."""
+        url = f"{self.ollama_base_url}/api/generate"
+        payload = {
+            "model": self.model,
+            "prompt": f"{system_prompt}\n\n{user_prompt}",
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.max_tokens,
+            }
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["response"].strip()
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(
+                f"Cannot connect to Ollama at {self.ollama_base_url}. "
+                "Make sure Ollama is running (https://ollama.com) and the model is pulled."
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error during Ollama generation: {str(e)}")
+
     def translate(self, description, target_language='python', include_comments=True):
         """
         Translate natural language description to code.
-        
+
         Args:
             description (str): Natural language description of what the code should do
             target_language (str): Programming language to generate code in
             include_comments (bool): Whether to include explanatory comments
-            
+
         Returns:
             str: Generated code
         """
@@ -78,45 +131,10 @@ class AibaseTranslator:
                 f"Unsupported language: {target_language}. "
                 f"Supported languages: {', '.join(self.SUPPORTED_LANGUAGES.keys())}"
             )
-        
+
         lang_name = self.SUPPORTED_LANGUAGES[target_language.lower()]
-        
-        system_prompt = (
-            f"You are an expert programmer that translates natural language descriptions "
-            f"into clean, efficient, and well-structured {lang_name} code. "
-            f"Provide only the code without additional explanations unless specifically asked. "
-            f"{'Include helpful comments to explain the code.' if include_comments else 'Minimize comments.'}"
-        )
-        
-        user_prompt = (
-            f"Convert the following natural language description into {lang_name} code:\n\n"
-            f"{description}\n\n"
-            f"Provide complete, working code that can be run or used directly."
-        )
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-            
-            generated_code = response.choices[0].message.content.strip()
-            
-            # Remove markdown code blocks if present
-            if generated_code.startswith('```'):
-                lines = generated_code.split('\n')
-                # Remove first and last lines (markdown delimiters)
-                generated_code = '\n'.join(lines[1:-1]) if len(lines) > 2 else generated_code
-            
-            return generated_code
-            
-        except Exception as e:
-            raise RuntimeError(f"Error during translation: {str(e)}")
+        system_prompt, user_prompt = self._build_prompts(description, lang_name, include_comments)
+        return self._strip_code_fences(self._generate_ollama(system_prompt, user_prompt))
     
     def translate_interactive(self):
         """Run an interactive session for translating descriptions to code."""
@@ -205,7 +223,7 @@ Examples:
     )
     parser.add_argument(
         '--model',
-        help=f'OpenAI model to use (default: {AibaseTranslator.DEFAULT_MODEL})'
+        help=f'Ollama model to use (default: {AibaseTranslator.DEFAULT_OLLAMA_MODEL})'
     )
     parser.add_argument(
         '--temperature',
@@ -224,7 +242,7 @@ Examples:
         translator = AibaseTranslator(
             model=args.model,
             temperature=args.temperature,
-            max_tokens=args.max_tokens
+            max_tokens=args.max_tokens,
         )
         
         if args.description:
