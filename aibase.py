@@ -17,6 +17,203 @@ init(autoreset=True)
 load_dotenv()
 
 
+class CodeGenerator:
+    """Base class for specialized code generators."""
+
+    def __init__(self, translator):
+        """
+        Initialize generator with a translator instance.
+
+        Args:
+            translator (AibaseTranslator): Translator instance to use
+        """
+        self.translator = translator
+
+    def _generate_code(self, prompt, language):
+        """
+        Generate code using the translator.
+
+        Args:
+            prompt (str): Detailed prompt for code generation
+            language (str): Target language
+
+        Returns:
+            str: Generated code
+        """
+        return self.translator.translate(prompt, language, include_comments=True)
+
+
+class FlutterGenerator(CodeGenerator):
+    """Generator for Flutter/Dart code."""
+
+    def generate_widget(self, widget_type, name, properties=None, state_requirements=None):
+        """
+        Generate Flutter widget code.
+
+        Args:
+            widget_type (str): Type of widget (StatelessWidget, StatefulWidget, etc.)
+            name (str): Name of the widget
+            properties (dict): Widget properties
+            state_requirements (dict): State management requirements
+
+        Returns:
+            str: Generated widget code
+        """
+        prompt = f"Create a Flutter {widget_type} named {name}"
+
+        if properties:
+            props_str = ", ".join([f"{k}: {v}" for k, v in properties.items()])
+            prompt += f" with properties: {props_str}"
+
+        if state_requirements:
+            state_str = ", ".join([f"{k}: {v}" for k, v in state_requirements.items()])
+            prompt += f" with state management: {state_str}"
+
+        prompt += ". Include proper imports and follow Flutter best practices."
+
+        return self._generate_code(prompt, 'flutter')
+
+    def generate_screen(self, screen_name, widgets=None, navigation_setup=None):
+        """
+        Generate complete Flutter screen.
+
+        Args:
+            screen_name (str): Name of the screen
+            widgets (list): List of widgets to include
+            navigation_setup (dict): Navigation configuration
+
+        Returns:
+            str: Generated screen code
+        """
+        prompt = f"Create a Flutter screen named {screen_name}"
+
+        if widgets:
+            widgets_str = ", ".join(widgets)
+            prompt += f" that includes these widgets: {widgets_str}"
+
+        if navigation_setup:
+            nav_str = ", ".join([f"{k}: {v}" for k, v in navigation_setup.items()])
+            prompt += f" with navigation setup: {nav_str}"
+
+        prompt += ". Include proper imports, state management, and follow Flutter best practices."
+
+        return self._generate_code(prompt, 'flutter')
+
+    def generate_app(self, app_name, theme=None, initial_route=None):
+        """
+        Generate Flutter app boilerplate.
+
+        Args:
+            app_name (str): Name of the app
+            theme (dict): Theme configuration
+            initial_route (str): Initial route
+
+        Returns:
+            str: Generated app code
+        """
+        prompt = f"Create a complete Flutter app named {app_name}"
+
+        if theme:
+            theme_str = ", ".join([f"{k}: {v}" for k, v in theme.items()])
+            prompt += f" with theme: {theme_str}"
+
+        if initial_route:
+            prompt += f" with initial route: {initial_route}"
+
+        prompt += (
+            ". Include main.dart with MaterialApp, theme configuration, "
+            "and proper app structure following Flutter best practices."
+        )
+
+        return self._generate_code(prompt, 'flutter')
+
+
+class ReactNativeGenerator(CodeGenerator):
+    """Generator for React Native code."""
+
+    def generate_component(self, component_type, name, props=None, hooks_needed=None):
+        """
+        Generate React Native component.
+
+        Args:
+            component_type (str): Type of component (functional, class)
+            name (str): Name of the component
+            props (dict): Component props
+            hooks_needed (list): List of React hooks needed
+
+        Returns:
+            str: Generated component code
+        """
+        prompt = f"Create a React Native {component_type} component named {name}"
+
+        if props:
+            props_str = ", ".join([f"{k}: {v}" for k, v in props.items()])
+            prompt += f" with props: {props_str}"
+
+        if hooks_needed:
+            hooks_str = ", ".join(hooks_needed)
+            prompt += f" using these React hooks: {hooks_str}"
+
+        prompt += ". Use TypeScript, include proper imports, and follow React Native best practices."
+
+        return self._generate_code(prompt, 'react-native')
+
+    def generate_screen(self, screen_name, components=None, navigation_setup=None):
+        """
+        Generate complete React Native screen.
+
+        Args:
+            screen_name (str): Name of the screen
+            components (list): List of components to include
+            navigation_setup (dict): Navigation configuration
+
+        Returns:
+            str: Generated screen code
+        """
+        prompt = f"Create a React Native screen named {screen_name}"
+
+        if components:
+            components_str = ", ".join(components)
+            prompt += f" that includes these components: {components_str}"
+
+        if navigation_setup:
+            nav_str = ", ".join([f"{k}: {v}" for k, v in navigation_setup.items()])
+            prompt += f" with navigation setup: {nav_str}"
+
+        prompt += (
+            ". Use TypeScript, include proper imports, state management, "
+            "and follow React Native best practices."
+        )
+
+        return self._generate_code(prompt, 'react-native')
+
+    def generate_app(self, app_name, typescript=True, initial_screen=None):
+        """
+        Generate React Native app boilerplate.
+
+        Args:
+            app_name (str): Name of the app
+            typescript (bool): Whether to use TypeScript
+            initial_screen (str): Initial screen name
+
+        Returns:
+            str: Generated app code
+        """
+        lang_type = "TypeScript" if typescript else "JavaScript"
+        prompt = f"Create a complete React Native app named {app_name} using {lang_type}"
+
+        if initial_screen:
+            prompt += f" with initial screen: {initial_screen}"
+
+        file_ext = "tsx" if typescript else "js"
+        prompt += (
+            f". Include App.{file_ext} with navigation setup, proper app structure, "
+            "and follow React Native best practices."
+        )
+
+        return self._generate_code(prompt, 'react-native')
+
+
 class AibaseTranslator:
     """Main class for translating natural language to code."""
 
@@ -50,6 +247,9 @@ class AibaseTranslator:
         'game-asset-sprite': 'Game Sprite Asset Code',
         'game-asset-animation': 'Game Animation Asset Code',
         'game-tilemap': 'Game Tilemap Code',
+        'flutter': 'Flutter/Dart',
+        'dart': 'Dart',
+        'react-native': 'React Native',
     }
 
     @staticmethod
@@ -71,6 +271,21 @@ class AibaseTranslator:
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
         self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', self.DEFAULT_OLLAMA_BASE_URL)
         self.model = model or os.getenv('OLLAMA_MODEL', self.DEFAULT_OLLAMA_MODEL)
+        # Lazy-initialized generator helpers
+        self._flutter_generator = None
+        self._react_native_generator = None
+
+    def get_flutter_generator(self):
+        """Get (or create) a Flutter generator backed by this translator."""
+        if self._flutter_generator is None:
+            self._flutter_generator = FlutterGenerator(self)
+        return self._flutter_generator
+
+    def get_react_native_generator(self):
+        """Get (or create) a React Native generator backed by this translator."""
+        if self._react_native_generator is None:
+            self._react_native_generator = ReactNativeGenerator(self)
+        return self._react_native_generator
     
     def _build_prompts(self, description, lang_name, include_comments, language_key=''):
         """Build system and user prompts for code generation."""

@@ -217,6 +217,78 @@ def test_game_asset_prompt_selection():
         return False
 
 
+def test_mobile_language_targets():
+    """Test that flutter/dart/react-native language targets are present."""
+    print("\nTest 11: Flutter/React Native language targets")
+    print("-" * 50)
+
+    try:
+        languages = AibaseTranslator.SUPPORTED_LANGUAGES
+        for key in ('flutter', 'dart', 'react-native'):
+            assert key in languages, f"Missing language key: {key}"
+        print("✓ All 3 mobile language targets present")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
+
+
+def test_flutter_generator():
+    """Test FlutterGenerator uses translator.translate() (Ollama-backed)."""
+    print("\nTest 12: FlutterGenerator integration")
+    print("-" * 50)
+
+    try:
+        from aibase import FlutterGenerator
+        from unittest.mock import Mock, patch
+
+        mock_resp = Mock()
+        mock_resp.json.return_value = {"response": "import 'package:flutter/material.dart';"}
+        mock_resp.raise_for_status = Mock()
+
+        with patch('aibase.requests.post', return_value=mock_resp):
+            translator = AibaseTranslator()
+            gen = translator.get_flutter_generator()
+            assert isinstance(gen, FlutterGenerator)
+            # Subsequent call returns the same instance (cached)
+            assert gen is translator.get_flutter_generator()
+            code = gen.generate_widget('StatelessWidget', 'MyWidget')
+            assert 'flutter' in code.lower() or 'import' in code.lower() or len(code) > 0
+        print("✓ FlutterGenerator works via Ollama translator")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
+def test_react_native_generator():
+    """Test ReactNativeGenerator uses translator.translate() (Ollama-backed)."""
+    print("\nTest 13: ReactNativeGenerator integration")
+    print("-" * 50)
+
+    try:
+        from aibase import ReactNativeGenerator
+        from unittest.mock import Mock, patch
+
+        mock_resp = Mock()
+        mock_resp.json.return_value = {"response": "import React from 'react';"}
+        mock_resp.raise_for_status = Mock()
+
+        with patch('aibase.requests.post', return_value=mock_resp):
+            translator = AibaseTranslator()
+            gen = translator.get_react_native_generator()
+            assert isinstance(gen, ReactNativeGenerator)
+            code = gen.generate_component('functional', 'MyComponent')
+            assert len(code) > 0
+        print("✓ ReactNativeGenerator works via Ollama translator")
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
@@ -235,6 +307,9 @@ def run_all_tests():
         test_game_language_targets,
         test_flame_prompt_selection,
         test_game_asset_prompt_selection,
+        test_mobile_language_targets,
+        test_flutter_generator,
+        test_react_native_generator,
     ]
 
     results = []
