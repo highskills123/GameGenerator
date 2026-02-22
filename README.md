@@ -6,8 +6,10 @@ AI-powered Natural Language to Code Translator - Transform your ideas into worki
 > ```
 > git clone https://github.com/highskills123/Aibase.git
 > cd Aibase
+> git checkout copilot/resolve-merge-conflicts-pr-12
 > ```
-> Or download the ZIP directly: **https://github.com/highskills123/Aibase/archive/refs/heads/main.zip**
+> Or download the latest ZIP directly (no git needed):  
+> **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
 
 ## Overview
 

@@ -1,15 +1,26 @@
 # Quick Start Guide
 
-## 📥 Get the code first
+## 📥 Get the LATEST code first
 
+> ⚠️ **Important:** The fixes are on the `copilot/resolve-merge-conflicts-pr-12` branch,
+> not `main`. Use one of these to get the correct version:
+
+**Option A — Download ZIP (easiest, no git needed):**  
+👉 **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/resolve-merge-conflicts-pr-12.zip**
+
+1. Click the link above — it downloads a ZIP file
+2. Right-click → **Extract All** → choose a folder (e.g. `C:\Users\high\Aibase`)
+3. Open Command Prompt and `cd` into it:
+   ```
+   cd C:\Users\high\Aibase\Aibase-copilot-resolve-merge-conflicts-pr-12
+   ```
+
+**Option B — git clone:**
 ```
 git clone https://github.com/highskills123/Aibase.git
 cd Aibase
+git checkout copilot/resolve-merge-conflicts-pr-12
 ```
-
-No git? Download the ZIP instead:  
-👉 **https://github.com/highskills123/Aibase/archive/refs/heads/main.zip**  
-(extract it, then `cd` into the `Aibase-main` folder)
 
 ---
 
