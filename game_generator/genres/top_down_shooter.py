@@ -30,6 +30,7 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/game/hud.dart"] = _hud_dart(safe_name)
     files["lib/game/mobile_controls.dart"] = _mobile_controls_dart(safe_name)
     files["lib/game/game_over_overlay.dart"] = _game_over_overlay_dart(safe_name)
+    files["lib/game/save_manager.dart"] = _save_manager_dart()
     return files
 
 
@@ -505,4 +506,35 @@ class GameOverOverlay extends StatelessWidget {{
     );
   }}
 }}
+"""
+
+
+
+def _save_manager_dart() -> str:
+    return """\
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Persists high score and last session data.
+class SaveManager {
+  int highScore = 0;
+
+  Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    highScore = prefs.getInt('high_score') ?? 0;
+  }
+
+  Future<void> save({required int score}) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (score > highScore) {
+      highScore = score;
+      await prefs.setInt('high_score', score);
+    }
+  }
+
+  Future<void> reset() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('high_score');
+    highScore = 0;
+  }
+}
 """

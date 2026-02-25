@@ -136,8 +136,8 @@ def main() -> None:
     translator = None
     if args.model:
         try:
-            from aibase import AibaseTranslator
-            translator = AibaseTranslator(
+            from game_generator.ai.translator import OllamaTranslator
+            translator = OllamaTranslator(
                 model=args.model,
                 temperature=args.temperature,
                 max_tokens=args.max_tokens,

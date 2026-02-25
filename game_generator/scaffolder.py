@@ -77,7 +77,20 @@ def scaffold_project(
     # 7. Android manifest  (required for mobile play)
     files["android/app/src/main/AndroidManifest.xml"] = _android_manifest(spec)
 
-    # 8. iOS Info.plist  (required for iOS builds)
+    # 8. Android build files (required to build/run on Android)
+    pkg = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in spec.get("title", "my_game").lower()).strip("_") or "my_game"
+    files["android/build.gradle"] = _android_root_build_gradle()
+    files["android/app/build.gradle"] = _android_app_build_gradle(pkg)
+    files["android/settings.gradle"] = _android_settings_gradle(pkg)
+    files["android/gradle.properties"] = _android_gradle_properties()
+    files["android/gradle/wrapper/gradle-wrapper.properties"] = _gradle_wrapper_properties()
+    files[f"android/app/src/main/kotlin/com/example/{pkg}/MainActivity.kt"] = _main_activity_kt(pkg)
+    files["android/app/src/main/res/values/styles.xml"] = _android_styles_xml()
+    files["android/app/src/main/res/drawable/launch_background.xml"] = _android_launch_background_xml()
+    files["android/app/src/main/res/mipmap-hdpi/ic_launcher.png"] = ""
+    files["android/app/src/debug/AndroidManifest.xml"] = _android_debug_manifest()
+
+    # 9. iOS Info.plist  (required for iOS builds)
     files["ios/Runner/Info.plist"] = _ios_info_plist(spec)
 
     return files
@@ -401,4 +414,190 @@ def _ios_info_plist(spec: GameSpec) -> str:
     <true/>
 </dict>
 </plist>
+"""
+
+
+# ---------------------------------------------------------------------------
+# Android build helpers
+# ---------------------------------------------------------------------------
+
+def _android_root_build_gradle() -> str:
+    return """\
+buildscript {
+    ext.kotlin_version = '1.9.0'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+"""
+
+
+def _android_app_build_gradle(pkg: str) -> str:
+    return f"""\
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {{
+    localPropertiesFile.withReader('UTF-8') {{ reader ->
+        localProperties.load(reader)
+    }}
+}}
+
+def flutterRoot = localProperties.getProperty('flutter.sdk')
+if (flutterRoot == null) {{
+    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
+}}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {{
+    flutterVersionCode = '1'
+}}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {{
+    flutterVersionName = '1.0'
+}}
+
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+android {{
+    namespace 'com.example.{pkg}'
+    compileSdkVersion 34
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {{
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }}
+
+    kotlinOptions {{
+        jvmTarget = '1.8'
+    }}
+
+    sourceSets {{
+        main.java.srcDirs += 'src/main/kotlin'
+    }}
+
+    defaultConfig {{
+        applicationId "com.example.{pkg}"
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }}
+
+    buildTypes {{
+        release {{
+            signingConfig signingConfigs.debug
+        }}
+    }}
+}}
+
+flutter {{
+    source '../..'
+}}
+
+dependencies {{
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+}}
+"""
+
+
+def _android_settings_gradle(pkg: str) -> str:
+    return f"""\
+include ':app'
+
+def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
+def properties = new Properties()
+
+assert localPropertiesFile.exists()
+localPropertiesFile.withReader("UTF-8") {{ reader -> properties.load(reader) }}
+
+def flutterSdkPath = properties.getProperty("flutter.sdk")
+assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+apply from: "${{flutterSdkPath}}/packages/flutter_tools/gradle/app_plugin_loader.gradle"
+"""
+
+
+def _android_gradle_properties() -> str:
+    return """\
+org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
+android.useAndroidX=true
+android.enableJetifier=true
+"""
+
+
+def _gradle_wrapper_properties() -> str:
+    return """\
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.3-bin.zip
+"""
+
+
+def _main_activity_kt(pkg: str) -> str:
+    return f"""\
+package com.example.{pkg}
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
+"""
+
+
+def _android_styles_xml() -> str:
+    return """\
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>
+"""
+
+
+def _android_launch_background_xml() -> str:
+    return """\
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+</layer-list>
+"""
+
+
+def _android_debug_manifest() -> str:
+    return """\
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>
 """
