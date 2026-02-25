@@ -1,5 +1,7 @@
 # GameGenerator
 
+[![CI](https://github.com/highskills123/GameGenerator/actions/workflows/ci.yml/badge.svg)](https://github.com/highskills123/GameGenerator/actions/workflows/ci.yml)
+
 A collection of game generation tools and AI-assisted design utilities.
 
 ## Features
