@@ -37,6 +37,8 @@ class Orchestrator:
         scope: str = "prototype",
         auto_fix: bool = False,
         run_validation: bool = False,
+        smoke_test: bool = False,
+        smoke_test_mode: str = "test",
         translator: Any = None,
         constraint_overrides: Optional[Dict[str, Any]] = None,
         design_doc: bool = False,
@@ -62,6 +64,10 @@ class Orchestrator:
             auto_fix:             Re-run validation after patching (implies
                                   run_validation=True).
             run_validation:       Run ``flutter pub get`` + ``flutter analyze``.
+            smoke_test:           Run an optional smoke test after analysis
+                                  (``flutter test`` or ``flutter build apk --debug``).
+                                  Opt-in; not enabled by default.
+            smoke_test_mode:      ``"test"`` (default) or ``"build"``.
             translator:           Optional AibaseTranslator for Ollama spec.
             constraint_overrides: Extra constraints from the caller.
             design_doc:           When True, generate an Idle RPG design document.
@@ -195,7 +201,7 @@ class Orchestrator:
                     project_dir=tmp_dir, project_files=project_files
                 )
                 worker.write_files()
-                success, logs = worker.validate()
+                success, logs = worker.validate(run_smoke_test=smoke_test, smoke_test_mode=smoke_test_mode)
                 if not success and auto_fix:
                     print("      Validation failed; attempting auto-fix …")
                     _emit("validation", "Validation failed; attempting auto-fix …", percent=85)
