@@ -26,6 +26,9 @@ image = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "fastapi>=0.110.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.24.0",
 ]
 all = [
     "gamegenerator-design-assistant[config,llm,image]",
