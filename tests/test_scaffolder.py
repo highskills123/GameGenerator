@@ -175,5 +175,175 @@ class TestScaffolderSpec(unittest.TestCase):
             self.assertIn(key, spec, f"Missing key: {key}")
 
 
+# ---------------------------------------------------------------------------
+# Mobile-readiness tests (iOS + Android completeness)
+# ---------------------------------------------------------------------------
+
+class TestMobileReadiness(unittest.TestCase):
+    """Generated project must include all files required to run on iOS and Android."""
+
+    def setUp(self):
+        self.files = scaffold_project(_idle_spec())
+
+    # ── iOS ──────────────────────────────────────────────────────────────────
+
+    def test_ios_app_delegate_swift_exists(self):
+        self.assertIn("ios/Runner/AppDelegate.swift", self.files)
+
+    def test_ios_app_delegate_swift_content(self):
+        content = self.files["ios/Runner/AppDelegate.swift"]
+        self.assertIn("FlutterAppDelegate", content)
+        self.assertIn("GeneratedPluginRegistrant", content)
+
+    def test_ios_bridging_header_exists(self):
+        self.assertIn("ios/Runner/Runner-Bridging-Header.h", self.files)
+
+    def test_ios_podfile_exists(self):
+        self.assertIn("ios/Podfile", self.files)
+
+    def test_ios_podfile_platform_ios(self):
+        self.assertIn("platform :ios", self.files["ios/Podfile"])
+
+    def test_ios_podfile_has_flutter_install(self):
+        self.assertIn("flutter_install_all_ios_pods", self.files["ios/Podfile"])
+
+    def test_ios_launch_screen_storyboard_exists(self):
+        self.assertIn("ios/Runner/Base.lproj/LaunchScreen.storyboard", self.files)
+
+    def test_ios_launch_screen_storyboard_valid_xml(self):
+        content = self.files["ios/Runner/Base.lproj/LaunchScreen.storyboard"]
+        self.assertIn("<?xml", content)
+        self.assertIn("document type", content)
+
+    def test_ios_main_storyboard_exists(self):
+        self.assertIn("ios/Runner/Base.lproj/Main.storyboard", self.files)
+
+    def test_ios_main_storyboard_uses_flutter_view_controller(self):
+        content = self.files["ios/Runner/Base.lproj/Main.storyboard"]
+        self.assertIn("FlutterViewController", content)
+
+    def test_ios_assets_contents_json_exists(self):
+        self.assertIn("ios/Runner/Assets.xcassets/Contents.json", self.files)
+
+    def test_ios_app_icon_contents_json_exists(self):
+        self.assertIn("ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json", self.files)
+
+    def test_ios_app_icon_has_universal_entry(self):
+        import json
+        content = json.loads(
+            self.files["ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json"]
+        )
+        self.assertIn("images", content)
+        self.assertTrue(len(content["images"]) > 0)
+
+    def test_ios_xcworkspace_exists(self):
+        self.assertIn("ios/Runner.xcworkspace/contents.xcworkspacedata", self.files)
+
+    def test_ios_xcworkspace_references_xcodeproj(self):
+        content = self.files["ios/Runner.xcworkspace/contents.xcworkspacedata"]
+        self.assertIn("Runner.xcodeproj", content)
+
+    def test_ios_pbxproj_exists(self):
+        self.assertIn("ios/Runner.xcodeproj/project.pbxproj", self.files)
+
+    def test_ios_pbxproj_has_required_sections(self):
+        content = self.files["ios/Runner.xcodeproj/project.pbxproj"]
+        for section in [
+            "PBXBuildFile",
+            "PBXFileReference",
+            "PBXNativeTarget",
+            "PBXProject",
+            "XCBuildConfiguration",
+            "XCConfigurationList",
+        ]:
+            self.assertIn(section, content, f"pbxproj missing section: {section}")
+
+    def test_ios_pbxproj_contains_bundle_identifier(self):
+        content = self.files["ios/Runner.xcodeproj/project.pbxproj"]
+        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER", content)
+        self.assertIn("com.example.", content)
+
+    def test_ios_pbxproj_contains_app_delegate(self):
+        content = self.files["ios/Runner.xcodeproj/project.pbxproj"]
+        self.assertIn("AppDelegate.swift", content)
+
+    def test_ios_pbxproj_is_deterministic(self):
+        """Same spec → identical pbxproj (UUIDs are deterministic)."""
+        files2 = scaffold_project(_idle_spec())
+        self.assertEqual(
+            self.files["ios/Runner.xcodeproj/project.pbxproj"],
+            files2["ios/Runner.xcodeproj/project.pbxproj"],
+        )
+
+    # ── Android ──────────────────────────────────────────────────────────────
+
+    def test_android_night_styles_exists(self):
+        self.assertIn(
+            "android/app/src/main/res/values-night/styles.xml", self.files
+        )
+
+    def test_android_night_styles_has_launch_theme(self):
+        content = self.files["android/app/src/main/res/values-night/styles.xml"]
+        self.assertIn("LaunchTheme", content)
+
+    def test_android_mipmap_all_densities(self):
+        for density in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"):
+            path = f"android/app/src/main/res/mipmap-{density}/ic_launcher.png"
+            self.assertIn(path, self.files, f"Missing mipmap density: {density}")
+
+    # ── Developer-experience files ────────────────────────────────────────────
+
+    def test_analysis_options_exists(self):
+        self.assertIn("analysis_options.yaml", self.files)
+
+    def test_analysis_options_includes_flutter_lints(self):
+        content = self.files["analysis_options.yaml"]
+        self.assertIn("flutter_lints", content)
+
+    def test_gitignore_exists(self):
+        self.assertIn(".gitignore", self.files)
+
+    def test_gitignore_ignores_local_properties(self):
+        self.assertIn("local.properties", self.files[".gitignore"])
+
+    def test_gitignore_ignores_ios_pods(self):
+        self.assertIn("ios/Pods/", self.files[".gitignore"])
+
+    def test_gitignore_ignores_build_dir(self):
+        self.assertIn("build/", self.files[".gitignore"])
+
+    def test_quickstart_md_exists(self):
+        self.assertIn("QUICKSTART.md", self.files)
+
+    def test_quickstart_md_contains_flutter_pub_get(self):
+        self.assertIn("flutter pub get", self.files["QUICKSTART.md"])
+
+    def test_quickstart_md_contains_flutter_run(self):
+        self.assertIn("flutter run", self.files["QUICKSTART.md"])
+
+    def test_quickstart_md_contains_pod_install(self):
+        self.assertIn("pod install", self.files["QUICKSTART.md"])
+
+    def test_quickstart_md_contains_build_apk(self):
+        self.assertIn("flutter build apk", self.files["QUICKSTART.md"])
+
+    def test_quickstart_md_contains_build_ipa(self):
+        self.assertIn("flutter build ipa", self.files["QUICKSTART.md"])
+
+    def test_quickstart_md_contains_icon_replacement_guide(self):
+        self.assertIn("ic_launcher", self.files["QUICKSTART.md"])
+
+    # ── pubspec dev_dependencies ──────────────────────────────────────────────
+
+    def test_pubspec_has_dev_dependencies(self):
+        self.assertIn("dev_dependencies:", self.files["pubspec.yaml"])
+
+    def test_pubspec_has_flutter_test(self):
+        self.assertIn("flutter_test:", self.files["pubspec.yaml"])
+
+    def test_pubspec_has_flutter_lints(self):
+        self.assertIn("flutter_lints:", self.files["pubspec.yaml"])
+
+
 if __name__ == "__main__":
     unittest.main()
