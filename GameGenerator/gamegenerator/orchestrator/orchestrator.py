@@ -38,6 +38,15 @@ class Orchestrator:
         run_validation: bool = False,
         translator: Any = None,
         constraint_overrides: Optional[Dict[str, Any]] = None,
+        design_doc: bool = False,
+        design_doc_format: str = "json",
+        design_doc_path: Optional[str] = None,
+        ollama_base_url: Optional[str] = None,
+        ollama_model: Optional[str] = None,
+        ollama_temperature: Optional[float] = None,
+        ollama_max_tokens: Optional[int] = None,
+        ollama_timeout: Optional[int] = None,
+        ollama_seed: Optional[int] = None,
     ) -> None:
         """
         Execute the full game generation pipeline.
@@ -52,6 +61,15 @@ class Orchestrator:
             run_validation:       Run ``flutter pub get`` + ``flutter analyze``.
             translator:           Optional AI translator for richer spec.
             constraint_overrides: Extra constraints from the caller.
+            design_doc:           When True, generate an Idle RPG design document.
+            design_doc_format:    "json" or "md" (default "json").
+            design_doc_path:      Path inside the project for the design doc.
+            ollama_base_url:      Ollama server base URL.
+            ollama_model:         Ollama model name for design doc generation.
+            ollama_temperature:   Sampling temperature.
+            ollama_max_tokens:    Max tokens to generate.
+            ollama_timeout:       HTTP request timeout in seconds.
+            ollama_seed:          Random seed for reproducibility.
         """
         from gamegenerator.spec import generate_spec
         from gamegenerator.scaffolder import scaffold_project
@@ -87,6 +105,39 @@ class Orchestrator:
         print(f"      Title : {spec['title']}")
         print(f"      Genre : {spec['genre']}")
 
+        # ── 2b. Optional design document generation ─────────────────────
+        design_doc_content: Optional[str] = None
+        resolved_design_doc_path: Optional[str] = None
+        if design_doc:
+            from gamegenerator.ai.design_assistant import (
+                generate_idle_rpg_design,
+                design_doc_to_markdown,
+            )
+            print("[1b]  Generating Idle RPG design document via Ollama …")
+            try:
+                doc = generate_idle_rpg_design(
+                    prompt,
+                    model=ollama_model,
+                    base_url=ollama_base_url,
+                    temperature=ollama_temperature,
+                    max_tokens=ollama_max_tokens,
+                    timeout=ollama_timeout,
+                    seed=ollama_seed,
+                )
+            except (RuntimeError, ValueError) as exc:
+                import sys
+                print(f"[ERROR] Design document generation failed: {exc}")
+                sys.exit(1)
+
+            if design_doc_format == "md":
+                design_doc_content = design_doc_to_markdown(doc)
+                resolved_design_doc_path = design_doc_path or "DESIGN.md"
+            else:
+                import json as _json
+                design_doc_content = _json.dumps(doc, indent=2)
+                resolved_design_doc_path = design_doc_path or "assets/design/design.json"
+            print(f"      Design doc will be written to: {resolved_design_doc_path}")
+
         # ── 3–5. Scaffold, import assets, export ZIP ────────────────────
         with tempfile.TemporaryDirectory(prefix="gamegen_") as tmp_dir:
 
@@ -109,7 +160,11 @@ class Orchestrator:
             )
             print(f"      Generated {len(project_files)} file(s).")
 
-            # 4b. Optional validation + auto-fix
+            # 4b. Inject design document into project files
+            if design_doc_content is not None and resolved_design_doc_path is not None:
+                project_files[resolved_design_doc_path] = design_doc_content
+
+            # 4c. Optional validation + auto-fix
             if auto_fix or run_validation:
                 print("[3b]  Running Flutter validation …")
                 worker = ValidatorWorker(
