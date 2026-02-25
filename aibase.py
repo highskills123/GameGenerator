@@ -567,6 +567,77 @@ class AibaseTranslator:
                 print(f"\n{Fore.RED}Error: {str(e)}{Style.RESET_ALL}\n")
 
 
+def _run_game_generator(args):
+    """Handle the --generate-game sub-command."""
+    import tempfile
+
+    from game_generator.spec import generate_spec
+    from game_generator.scaffolder import scaffold_project
+    from game_generator.asset_importer import import_assets
+    from game_generator.zip_exporter import export_to_zip
+
+    prompt = args.prompt or ""
+    if not prompt:
+        print(f"{Fore.RED}Error: --prompt is required with --generate-game.{Style.RESET_ALL}")
+        sys.exit(1)
+
+    output_zip = args.out
+    if not output_zip:
+        print(f"{Fore.RED}Error: --out is required with --generate-game.{Style.RESET_ALL}")
+        sys.exit(1)
+
+    print(f"{Fore.CYAN}{'='*70}")
+    print(f"{Fore.CYAN}Aibase – Flutter/Flame Game Generator")
+    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
+
+    # Optional AI translator for richer spec
+    translator = None
+    if args.model or os.getenv('OLLAMA_MODEL'):
+        try:
+            translator = AibaseTranslator(
+                model=args.model,
+                temperature=args.temperature,
+                max_tokens=args.max_tokens,
+                timeout=args.timeout,
+            )
+        except Exception:
+            translator = None
+
+    # 1. Generate GameSpec
+    print(f"{Fore.YELLOW}Generating game spec...{Style.RESET_ALL}")
+    spec = generate_spec(prompt, translator=translator)
+    print(
+        f"{Fore.GREEN}  Title : {spec['title']}\n"
+        f"  Genre : {spec['genre']}{Style.RESET_ALL}"
+    )
+
+    # 2. Scaffold project into a temp directory
+    with tempfile.TemporaryDirectory(prefix="aibase_game_") as tmp_dir:
+        # 3. Import assets (if --assets-dir provided)
+        imported_paths = []
+        if args.assets_dir:
+            print(f"{Fore.YELLOW}Importing assets from: {args.assets_dir}{Style.RESET_ALL}")
+            imported_paths = import_assets(spec, args.assets_dir, tmp_dir)
+            print(f"{Fore.GREEN}  Imported {len(imported_paths)} asset(s).{Style.RESET_ALL}")
+        else:
+            print(
+                f"{Fore.YELLOW}No --assets-dir supplied; "
+                f"project will reference assets/imported/ (populate manually).{Style.RESET_ALL}"
+            )
+
+        # 4. Scaffold all source files
+        print(f"{Fore.YELLOW}Scaffolding Flutter/Flame project...{Style.RESET_ALL}")
+        project_files = scaffold_project(spec, imported_asset_paths=imported_paths)
+        print(f"{Fore.GREEN}  Generated {len(project_files)} file(s).{Style.RESET_ALL}")
+
+        # 5. Export ZIP
+        print(f"{Fore.YELLOW}Creating ZIP: {output_zip}{Style.RESET_ALL}")
+        export_to_zip(project_files, tmp_dir, output_zip)
+
+    print(f"\n{Fore.CYAN}Done! Open the ZIP and run:{Style.RESET_ALL}")
+    print(f"  flutter pub get && flutter run\n")
+
+
 def main():
     """Main entry point for the CLI."""
     import argparse
@@ -584,6 +655,11 @@ Examples:
   
   # Specify target language
   python aibase.py -d "create a REST API server" -l javascript
+
+  # Generate a Flutter/Flame game project (ZIP output)
+  python aibase.py --generate-game --prompt "top down space shooter" --out game.zip
+  python aibase.py --generate-game --prompt "idle RPG with upgrades" \\
+      --assets-dir "C:\\Users\\me\\Desktop\\MyAssets" --out my_game.zip
         '''
     )
     
@@ -624,10 +700,33 @@ Examples:
         type=int,
         help=f'Request timeout in seconds for Ollama generation (default: no limit)'
     )
+
+    # --- Game generator arguments ---
+    parser.add_argument(
+        '--generate-game',
+        action='store_true',
+        help='Generate a Flutter/Flame game project as a ZIP file'
+    )
+    parser.add_argument(
+        '--prompt',
+        help='Game description prompt (used with --generate-game)'
+    )
+    parser.add_argument(
+        '--assets-dir',
+        help='Path to a local folder containing game assets (used with --generate-game)'
+    )
+    parser.add_argument(
+        '--out',
+        help='Output ZIP file path (used with --generate-game)'
+    )
     
     args = parser.parse_args()
     
     try:
+        if args.generate_game:
+            _run_game_generator(args)
+            return
+
         translator = AibaseTranslator(
             model=args.model,
             temperature=args.temperature,
