@@ -124,8 +124,9 @@ Examples:
 
 def _auto_out(prompt: str) -> str:
     """Derive a safe ZIP filename from the prompt."""
-    slug = re.sub(r"[^a-z0-9]+", "_", prompt.lower()).strip("_")[:40]
-    return f"{slug or 'game'}.zip"
+    slug = re.sub(r"[^a-z0-9]+", "_", prompt.lower()).strip("_")
+    slug = (slug[:40].strip("_")) or "game"
+    return f"{slug}.zip"
 
 
 def main() -> None:

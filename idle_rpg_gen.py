@@ -94,13 +94,24 @@ Examples:
     return parser
 
 
+def _auto_out(prompt: str) -> str:
+    """Derive a safe ZIP filename from the prompt."""
+    slug = re.sub(r"[^a-z0-9]+", "_", prompt.lower()).strip("_")
+    slug = (slug[:40].strip("_")) or "game"
+    return f"{slug}.zip"
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    # Auto-generate output filename when --out is omitted
+    if args.out is None:
+        args.out = _auto_out(args.prompt)
+
     print(f"{Fore.CYAN}{'='*70}")
-    print(f"{Fore.CYAN}Aibase – One-Shot Idle RPG Game Generator")
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
+    print(f"{Fore.CYAN}One-Shot Idle RPG Game Generator")
+    print(f"{Fore.CYAN}Output: {args.out}{Style.RESET_ALL}\n")
     print(f"  Prompt : {args.prompt}")
     print(f"  Output : {args.out}\n")
 

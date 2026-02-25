@@ -53,6 +53,7 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/game/hud.dart"] = _hud_dart(safe_name)
     files["lib/game/upgrade_overlay.dart"] = _upgrade_overlay_dart(safe_name)
     files["lib/game/save_manager.dart"] = _save_manager_dart()
+    files["lib/game/damage_text.dart"] = _damage_text_dart()
 
     # JSON data files (always generated; populated from design doc when available)
     files["assets/data/quests.json"] = _quests_json(design_doc)
@@ -95,6 +96,7 @@ import 'idle_manager.dart';
 import 'hud.dart';
 import 'upgrade_overlay.dart';
 import 'save_manager.dart';
+import 'damage_text.dart';
 
 class {name}Game extends FlameGame with TapCallbacks {{
   // Game state
@@ -153,7 +155,10 @@ class {name}Game extends FlameGame with TapCallbacks {{
   @override
   void onTapDown(TapDownEvent event) {{
     if (_gameOver) return;
-    hero.attack(enemy, bonus: hero.tapDamage);
+    final dmg = hero.tapDamage;
+    hero.attack(enemy, bonus: dmg);
+    // Show floating damage number at tap position
+    add(DamageText(amount: dmg, position: event.localPosition.clone()));
     checkEnemyDead();
   }}
 
@@ -252,10 +257,28 @@ class GameEnemy extends RectangleComponent {{
     hp = maxHp;
   }}
 
+  @override
+  void render(Canvas canvas) {{
+    // Body – colour shifts from red to orange as HP drops
+    final ratio = maxHp > 0 ? hp / maxHp : 1.0;
+    paint = Paint()..color = Color.lerp(Colors.orange, Colors.red, 1 - ratio)!;
+    super.render(canvas);
+
+    // Health bar above enemy
+    final barW = size.x;
+    const barH = 6.0;
+    canvas.drawRect(
+      Rect.fromLTWH(0, -10, barW, barH),
+      Paint()..color = Colors.grey.shade800,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, -10, barW * ratio, barH),
+      Paint()..color = Colors.greenAccent,
+    );
+  }}
+
   void takeDamage(int amount) {{
     hp = (hp - amount).clamp(0, maxHp);
-    paint = Paint()
-      ..color = Color.lerp(Colors.red, Colors.orange, 1 - hp / maxHp)!;
   }}
 }}
 """
@@ -1371,4 +1394,51 @@ class _{name}AppState extends State<{name}App> {{
     );
   }}
 }}
+"""
+
+
+# ---------------------------------------------------------------------------
+# lib/game/damage_text.dart
+# ---------------------------------------------------------------------------
+
+
+def _damage_text_dart() -> str:
+    return """\
+import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
+
+/// Floating damage number that drifts upward and fades out.
+class DamageText extends TextComponent {
+  static const double _duration = 0.8;
+  static const double _riseSpeed = 55;
+
+  double _elapsed = 0;
+
+  DamageText({required int amount, required Vector2 position})
+      : super(
+          text: '+$amount',
+          textRenderer: TextPaint(
+            style: const TextStyle(
+              color: Colors.yellowAccent,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                    color: Colors.black,
+                    offset: Offset(1, 1),
+                    blurRadius: 2),
+              ],
+            ),
+          ),
+          position: position,
+        );
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _elapsed += dt;
+    position.y -= _riseSpeed * dt;
+    if (_elapsed >= _duration) removeFromParent();
+  }
+}
 """
