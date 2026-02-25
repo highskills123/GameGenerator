@@ -23,23 +23,32 @@ image = [
     "transformers>=4.35.0",
     "accelerate>=0.24.0",
 ]
+ollama = [
+    "requests>=2.28.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
     "fastapi>=0.110.0",
     "pydantic>=2.0.0",
     "httpx>=0.24.0",
 ]
 all = [
-    "gamegenerator-design-assistant[config,llm,image]",
+    "gamegenerator-design-assistant[config,llm,image,ollama]",
 ]
 
 [project.scripts]
 gamedesign-agent = "gamedesign_agent.cli:main"
+gamegen = "gamegen:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gamedesign_agent*"]
+
+[tool.setuptools]
+py-modules = ["gamegen"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
