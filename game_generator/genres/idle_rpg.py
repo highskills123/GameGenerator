@@ -54,6 +54,7 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/game/upgrade_overlay.dart"] = _upgrade_overlay_dart(safe_name)
     files["lib/game/save_manager.dart"] = _save_manager_dart()
     files["lib/game/damage_text.dart"] = _damage_text_dart()
+    files["lib/game/game_over_overlay.dart"] = _game_over_overlay_dart(safe_name)
 
     # JSON data files (always generated; populated from design doc when available)
     files["assets/data/quests.json"] = _quests_json(design_doc)
@@ -97,37 +98,53 @@ import 'hud.dart';
 import 'upgrade_overlay.dart';
 import 'save_manager.dart';
 import 'damage_text.dart';
+import 'game_over_overlay.dart';
 
 class {name}Game extends FlameGame with TapCallbacks {{
-  // Game state
+  // ── Persistent state ──────────────────────────────────────────────
   int gold = 0;
   int wave = 1;
-  bool _gameOver = false;
+  int prestigeCount = 0;
 
-  late final GameHero hero;
+  /// +10 % all stats per prestige level.
+  double get prestigeBonus => 1.0 + prestigeCount * 0.10;
+
+  // ── Runtime settings ──────────────────────────────────────────────
+  /// Battle speed multiplier – 1, 2, or 5.
+  int speedMultiplier = 1;
+
+  // ── Session state ─────────────────────────────────────────────────
+  bool isGameOver = false;
+
+  // ── Entities ──────────────────────────────────────────────────────
+  late GameHero hero;
   late GameEnemy enemy;
-  late final IdleManager idleManager;
+  late IdleManager idleManager;
   late final SaveManager saveManager;
 
   @override
   Future<void> onLoad() async {{
     await super.onLoad();
 
-    // Save manager (load persisted state)
     saveManager = SaveManager();
     await saveManager.load();
     gold = saveManager.gold;
     wave = saveManager.wave;
+    prestigeCount = saveManager.prestigeCount;
 
     // Background
     add(RectangleComponent(size: size, paint: Paint()..color = const Color(0xFF1a1a2e)));
 
-    // Hero
+    // Hero – restore persisted level/XP
     hero = GameHero(game: this);
+    hero.heroLevel = saveManager.heroLevel;
+    hero.xp = saveManager.xp;
+    hero.xpToNextLevel = hero.heroLevel * 50;
+    hero.applyPrestige(prestigeBonus);
     await hero.onLoad();
     add(hero);
 
-    // Enemy
+    // Enemy (boss every 5th wave)
     enemy = GameEnemy(game: this, wave: wave);
     await enemy.onLoad();
     add(enemy);
@@ -137,40 +154,112 @@ class {name}Game extends FlameGame with TapCallbacks {{
     add(idleManager);
 
     // HUD
-    add(Hud(game: this));
+    add(Hud());
 
+    // Overlays
     overlays.addEntry(
       'Upgrade',
-      (context, game) => UpgradeOverlay(game: game as {name}Game),
+      (ctx, g) => UpgradeOverlay(game: g as {name}Game),
+    );
+    overlays.addEntry(
+      'GameOver',
+      (ctx, g) => GameOverOverlay(game: g as {name}Game),
     );
   }}
 
   @override
   void onRemove() {{
-    saveManager.save(gold: gold, wave: wave);
+    _persist();
     super.onRemove();
   }}
 
-  /// Called when the player taps the screen (bonus damage).
-  @override
-  void onTapDown(TapDownEvent event) {{
-    if (_gameOver) return;
-    final dmg = hero.tapDamage;
-    hero.attack(enemy, bonus: dmg);
-    // Show floating damage number at tap position
-    add(DamageText(amount: dmg, position: event.localPosition.clone()));
-    checkEnemyDead();
+  void _persist() {{
+    saveManager.save(
+      gold: gold,
+      wave: wave,
+      heroLevel: hero.heroLevel,
+      xp: hero.xp,
+      prestigeCount: prestigeCount,
+    );
   }}
 
-  void checkEnemyDead() {{
-    if (enemy.hp <= 0) {{
-      gold += wave * 10;
-      wave++;
-      saveManager.save(gold: gold, wave: wave);
-      _respawnEnemy();
-      overlays.add('Upgrade');
-    }}
+  // ── Tap: player manually attacks ──────────────────────────────────
+  @override
+  void onTapDown(TapDownEvent event) {{
+    if (isGameOver) return;
+    final (dmg, isCrit) = hero.attack(enemy, bonus: hero.tapDamage);
+    add(DamageText(
+      amount: dmg,
+      position: event.localPosition.clone(),
+      isCrit: isCrit,
+    ));
+    _checkEnemyDead();
   }}
+
+  // Called by IdleManager auto-attack tick.
+  void autoAttack() {{
+    if (isGameOver || !enemy.isMounted) return;
+    final pos = enemy.position + enemy.size / 2;
+    final (dmg, isCrit) = hero.attack(enemy);
+    add(DamageText(amount: dmg, position: pos, isCrit: isCrit));
+    _checkEnemyDead();
+  }}
+
+  // Called by IdleManager enemy counter-attack tick.
+  void enemyCounterAttack() {{
+    if (isGameOver || enemy.hp <= 0) return;
+    heroTakeDamage(enemy.attackPower);
+  }}
+
+  void _checkEnemyDead() {{
+    if (enemy.hp > 0) return;
+    final baseGold = wave * 10 * (enemy.isBoss ? 5 : 1);
+    gold += (baseGold * hero.goldMultiplier * prestigeBonus).round();
+    hero.gainXp(wave * (enemy.isBoss ? 10 : 3));
+    wave++;
+    _persist();
+    _respawnEnemy();
+    overlays.add('Upgrade');
+  }}
+
+  void heroTakeDamage(int amount) {{
+    hero.hp = (hero.hp - amount).clamp(0, hero.maxHp);
+    if (hero.hp <= 0) _triggerGameOver();
+  }}
+
+  void _triggerGameOver() {{
+    if (isGameOver) return;
+    isGameOver = true;
+    _persist();
+    pauseEngine();
+    overlays.add('GameOver');
+  }}
+
+  /// Prestige: reset progress, keep permanent bonus.
+  void prestige() {{
+    prestigeCount++;
+    gold = 0;
+    wave = 1;
+    hero.resetForPrestige(prestigeBonus);
+    isGameOver = false;
+    overlays.remove('GameOver');
+    overlays.remove('Upgrade');
+    _persist();
+    resumeEngine();
+    _respawnEnemy();
+  }}
+
+  /// Try again without prestige (hero restored to full HP).
+  void tryAgain() {{
+    hero.hp = hero.maxHp;
+    isGameOver = false;
+    overlays.remove('GameOver');
+    resumeEngine();
+    _respawnEnemy();
+  }}
+
+  /// Whether the current wave is a boss wave.
+  bool get isBossWave => wave % 5 == 0 && wave > 0;
 
   void _respawnEnemy() {{
     enemy.removeFromParent();
@@ -183,21 +272,38 @@ class {name}Game extends FlameGame with TapCallbacks {{
 
 def _hero_dart(name: str) -> str:
     return f"""\
+import 'dart:math';
 import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
 import 'enemy.dart';
 import 'game.dart';
 
 class GameHero extends PositionComponent {{
   final {name}Game game;
 
+  // Shared RNG for crit rolls
+  static final _rng = Random();
+
+  // ── Upgrade levels (player-purchased) ─────────────────────────────
   int level = 1;
   int defenceLevel = 1;
   int economyLevel = 1;
+
+  // ── Auto-leveling from XP ─────────────────────────────────────────
+  int heroLevel = 1;
+  int xp = 0;
+  int xpToNextLevel = 50;
+
+  // ── Combat stats ──────────────────────────────────────────────────
   int attackPower = 10;
   int tapDamage = 5;
   int maxHp = 100;
   int hp = 100;
   double goldMultiplier = 1.0;
+
+  // ── Flash effect on attack ────────────────────────────────────────
+  bool _isFlashing = false;
+  double _flashTimer = 0;
 
   GameHero({{required this.game}}) : super(size: Vector2(64, 64));
 
@@ -206,28 +312,110 @@ class GameHero extends PositionComponent {{
     position = Vector2(game.size.x * 0.25 - 32, game.size.y * 0.5 - 32);
   }}
 
-  void attack(GameEnemy target, {{int bonus = 0}}) {{
-    target.takeDamage(attackPower + bonus);
+  /// Apply prestige multiplier to base stats.
+  void applyPrestige(double bonus) {{
+    attackPower = (10 * bonus).round();
+    tapDamage = (5 * bonus).round();
+    maxHp = (100 * bonus).round();
+    hp = maxHp;
   }}
 
-  /// Combat upgrade: increase attack power.
+  /// Attack target; returns (damage dealt, isCrit).
+  (int, bool) attack(GameEnemy target, {{int bonus = 0}}) {{
+    final isCrit = _rng.nextInt(100) < 15; // 15% crit chance
+    final dmg = (attackPower + bonus) * (isCrit ? 2 : 1);
+    target.takeDamage(dmg);
+    _isFlashing = true;
+    _flashTimer = 0.1;
+    return (dmg, isCrit);
+  }}
+
+  /// Award XP and auto-level up as many times as needed.
+  void gainXp(int amount) {{
+    xp += amount;
+    while (xp >= xpToNextLevel) {{
+      xp -= xpToNextLevel;
+      heroLevel++;
+      xpToNextLevel = heroLevel * 50;
+      // Level-up stat boost
+      attackPower += heroLevel * 2;
+      maxHp += heroLevel * 10;
+      hp = maxHp; // restore HP on level-up
+    }}
+  }}
+
+  // ── Player-purchased upgrades ─────────────────────────────────────
+
   void upgradeAttack() {{
     level++;
     attackPower = (attackPower * 1.5).round();
     tapDamage = (tapDamage * 1.3).round();
   }}
 
-  /// Defence upgrade: increase max HP.
   void upgradeDefence() {{
     defenceLevel++;
     maxHp = (maxHp * 1.25).round();
-    hp = maxHp; // restore to full on upgrade
+    hp = maxHp;
   }}
 
-  /// Economy upgrade: increase gold earnings.
   void upgradeEconomy() {{
     economyLevel++;
     goldMultiplier *= 1.25;
+  }}
+
+  /// Reset for prestige – clears levels but keeps prestige bonus baked in.
+  void resetForPrestige(double bonus) {{
+    level = 1;
+    defenceLevel = 1;
+    economyLevel = 1;
+    heroLevel = 1;
+    xp = 0;
+    xpToNextLevel = 50;
+    goldMultiplier = 1.0;
+    applyPrestige(bonus);
+  }}
+
+  @override
+  void update(double dt) {{
+    super.update(dt);
+    if (_isFlashing) {{
+      _flashTimer -= dt;
+      if (_flashTimer <= 0) _isFlashing = false;
+    }}
+  }}
+
+  @override
+  void render(Canvas canvas) {{
+    // Body colour: white flash when attacking, blue otherwise
+    final bodyColor = _isFlashing ? Colors.white : const Color(0xFF4488FF);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(size.toRect(), const Radius.circular(8)),
+      Paint()..color = bodyColor,
+    );
+
+    // HP bar below hero body
+    final hpRatio = maxHp > 0 ? hp / maxHp : 1.0;
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.y + 4, size.x, 6),
+      Paint()..color = Colors.grey.shade800,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.y + 4, size.x * hpRatio, 6),
+      Paint()..color = hpRatio > 0.4 ? Colors.greenAccent : Colors.redAccent,
+    );
+
+    // XP bar
+    final xpRatio = xpToNextLevel > 0 ? xp / xpToNextLevel : 1.0;
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.y + 12, size.x, 4),
+      Paint()..color = Colors.grey.shade900,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.y + 12, size.x * xpRatio, 4),
+      Paint()..color = const Color(0xFF9333EA),
+    );
+
+    super.render(canvas);
   }}
 }}
 """
@@ -239,12 +427,16 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game.dart';
 
+/// Enemy.  Boss variant spawns every 5th wave: 5× HP, 5× gold reward,
+/// gold border, enlarged sprite, and counter-attack power.
 class GameEnemy extends RectangleComponent {{
   final {name}Game game;
   final int wave;
 
   late int maxHp;
   late int hp;
+  late int attackPower;
+  bool isBoss = false;
   String enemyName = 'Enemy';
 
   GameEnemy({{required this.game, required this.wave}})
@@ -252,29 +444,65 @@ class GameEnemy extends RectangleComponent {{
 
   @override
   Future<void> onLoad() async {{
-    position = Vector2(game.size.x * 0.65 - 32, game.size.y * 0.5 - 32);
-    maxHp = 50 + wave * 20;
+    isBoss = wave % 5 == 0 && wave > 0;
+    if (isBoss) {{
+      size = Vector2(90, 90);
+      maxHp = (50 + wave * 20) * 5;
+      attackPower = (wave * 3).clamp(1, 9999);
+      enemyName = '★ BOSS ★';
+    }} else {{
+      maxHp = 50 + wave * 20;
+      attackPower = wave.clamp(1, 9999);
+      enemyName = 'Lv.$wave';
+    }}
     hp = maxHp;
+    final cx = game.size.x * 0.65 - size.x / 2;
+    final cy = game.size.y * 0.5 - size.y / 2;
+    position = Vector2(cx, cy);
   }}
 
   @override
   void render(Canvas canvas) {{
-    // Body – colour shifts from red to orange as HP drops
     final ratio = maxHp > 0 ? hp / maxHp : 1.0;
-    paint = Paint()..color = Color.lerp(Colors.orange, Colors.red, 1 - ratio)!;
-    super.render(canvas);
 
-    // Health bar above enemy
-    final barW = size.x;
+    if (isBoss) {{
+      // Boss: deep red fill with amber border
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
+        Paint()..color = Color.lerp(Colors.deepOrange, Colors.red[900]!, 1 - ratio)!,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
+        Paint()
+          ..color = Colors.amber
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3,
+      );
+    }} else {{
+      paint = Paint()..color = Color.lerp(Colors.orange, Colors.red, 1 - ratio)!;
+      super.render(canvas);
+    }}
+
+    // HP bar above enemy
     const barH = 6.0;
     canvas.drawRect(
-      Rect.fromLTWH(0, -10, barW, barH),
+      Rect.fromLTWH(0, -14, size.x, barH),
       Paint()..color = Colors.grey.shade800,
     );
     canvas.drawRect(
-      Rect.fromLTWH(0, -10, barW * ratio, barH),
-      Paint()..color = Colors.greenAccent,
+      Rect.fromLTWH(0, -14, size.x * ratio, barH),
+      Paint()..color = isBoss ? Colors.amber : Colors.greenAccent,
     );
+
+    // Enemy name label
+    final tp = TextPaint(
+      style: TextStyle(
+        color: isBoss ? Colors.amber : Colors.white54,
+        fontSize: isBoss ? 12 : 10,
+        fontWeight: isBoss ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
+    tp.render(canvas, enemyName, Vector2(2, -26));
   }}
 
   void takeDamage(int amount) {{
@@ -297,13 +525,18 @@ def _idle_manager_dart(name: str, design_doc: Optional[Dict[str, Any]] = None) -
 import 'package:flame/components.dart';
 import 'game.dart';
 
-/// Automatically attacks the current enemy on a fixed interval.
-/// Also handles offline progress catch-up when the game resumes.
+/// Ticks the idle auto-battle loop.
+/// – Hero attacks the current enemy on _attackInterval / speedMultiplier.
+/// – Enemy counter-attacks the hero on _enemyInterval / speedMultiplier.
+/// – Offline catch-up awards gold for ticks that elapsed while closed.
 class IdleManager extends Component {{
   final {name}Game game;
 
-  static const double _attackInterval = {tick_rate};
-  double _timer = 0;
+  static const double _baseAttackInterval = {tick_rate};
+  static const double _baseEnemyInterval = 2.0;
+
+  double _attackTimer = 0;
+  double _enemyTimer = 0;
 
   IdleManager({{required this.game}});
 
@@ -319,27 +552,38 @@ class IdleManager extends Component {{
     if (lastSave == 0) return;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final elapsed = (nowMs - lastSave) / 1000.0;
-    // Cap catch-up at 8 hours to avoid extreme values
+    // Cap catch-up at 8 hours
     final cappedElapsed = elapsed.clamp(0, 8 * 3600).toDouble();
-    final catchUpTicks = (cappedElapsed / _attackInterval).floor();
+    final catchUpTicks = (cappedElapsed / _baseAttackInterval).floor();
     if (catchUpTicks > 0) {{
-      final catchUpGold = (catchUpTicks * game.hero.attackPower * 0.1).round();
+      final catchUpGold =
+          (catchUpTicks * game.hero.attackPower * 0.1 * game.prestigeBonus)
+              .round();
       game.gold += catchUpGold;
     }}
   }}
 
+  double get _attackInterval =>
+      _baseAttackInterval / game.speedMultiplier;
+
+  double get _enemyInterval =>
+      _baseEnemyInterval / game.speedMultiplier;
+
   @override
   void update(double dt) {{
-    _timer += dt;
-    if (_timer >= _attackInterval) {{
-      _timer = 0;
-      _autoAttack();
-    }}
-  }}
+    if (game.isGameOver) return;
 
-  void _autoAttack() {{
-    game.hero.attack(game.enemy);
-    game.checkEnemyDead();
+    _attackTimer += dt;
+    if (_attackTimer >= _attackInterval) {{
+      _attackTimer = 0;
+      game.autoAttack();
+    }}
+
+    _enemyTimer += dt;
+    if (_enemyTimer >= _enemyInterval) {{
+      _enemyTimer = 0;
+      game.enemyCounterAttack();
+    }}
   }}
 }}
 """
@@ -351,22 +595,63 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game.dart';
 
-class Hud extends TextComponent with HasGameRef<{name}Game> {{
-  Hud({{required {name}Game game}})
-      : super(
-          text: 'Gold: 0  Wave: 1',
-          textRenderer: TextPaint(
-            style: const TextStyle(
-              color: Colors.amber,
-              fontSize: 20,
-            ),
-          ),
-        );
+/// In-game HUD: shows gold, wave, speed, hero HP bar, XP bar.
+class Hud extends PositionComponent with HasGameRef<{name}Game> {{
+  static final _gold = TextPaint(
+    style: const TextStyle(color: Colors.amber, fontSize: 16,
+        fontWeight: FontWeight.bold),
+  );
+  static final _info = TextPaint(
+    style: const TextStyle(color: Colors.white70, fontSize: 13),
+  );
+
+  Hud() : super(priority: 10);
 
   @override
-  void update(double dt) {{
-    super.update(dt);
-    text = 'Gold: ${{gameRef.gold}}  Wave: ${{gameRef.wave}}';
+  void render(Canvas canvas) {{
+    final g = gameRef;
+    final h = g.hero;
+
+    // Gold
+    _gold.render(canvas, '💰 ${{g.gold}}', Vector2(10, 10));
+
+    // Wave + speed (boss flag)
+    final bossTag = g.isBossWave ? '👑 BOSS ' : '';
+    _info.render(
+      canvas,
+      '${{bossTag}}Wave ${{g.wave}}  ${{g.speedMultiplier}}x ▶',
+      Vector2(10, 30),
+    );
+
+    // Hero level / XP
+    _info.render(
+      canvas,
+      'Hero Lv.${{h.heroLevel}}  ${{h.xp}}/${{h.xpToNextLevel}} XP'
+      '${{g.prestigeCount > 0 ? "  ✨${{g.prestigeCount}}" : ""}}',
+      Vector2(10, 48),
+    );
+
+    // HP bar
+    final hpRatio = h.maxHp > 0 ? h.hp / h.maxHp : 1.0;
+    _renderBar(canvas, top: 66, ratio: hpRatio,
+        full: hpRatio > 0.4 ? Colors.greenAccent : Colors.redAccent);
+    _info.render(canvas, 'HP: ${{h.hp}}/${{h.maxHp}}', Vector2(154, 62));
+
+    // XP bar
+    final xpRatio = h.xpToNextLevel > 0 ? h.xp / h.xpToNextLevel : 1.0;
+    _renderBar(canvas, top: 76, ratio: xpRatio,
+        full: const Color(0xFF9333EA));
+  }}
+
+  void _renderBar(Canvas canvas, {{
+    required double top,
+    required double ratio,
+    required Color full,
+  }}) {{
+    canvas.drawRect(Rect.fromLTWH(10, top, 140, 5),
+        Paint()..color = Colors.grey.shade800);
+    canvas.drawRect(Rect.fromLTWH(10, top, 140 * ratio.clamp(0, 1), 5),
+        Paint()..color = full);
   }}
 }}
 """
@@ -389,10 +674,7 @@ class UpgradeOverlay extends StatefulWidget {{
 class _UpgradeOverlayState extends State<UpgradeOverlay> {{
   {name}Game get game => widget.game;
 
-  /// Cost for an upgrade at the given level (exponential scaling).
-  int _upgradeCost(int baseGold, int currentLevel) =>
-      (baseGold * (1.5 * currentLevel)).round();
-
+  int _upgradeCost(int base, int level) => (base * (1.5 * level)).round();
   bool _canAfford(int cost) => game.gold >= cost;
 
   void _buy(int cost, VoidCallback apply) {{
@@ -405,70 +687,149 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {{
 
   @override
   Widget build(BuildContext context) {{
-    final combatCost = _upgradeCost(100, game.hero.level);
-    final defenceCost = _upgradeCost(80, game.hero.defenceLevel);
+    final combatCost  = _upgradeCost(100, game.hero.level);
+    final defenceCost = _upgradeCost(80,  game.hero.defenceLevel);
     final economyCost = _upgradeCost(120, game.hero.economyLevel);
+    final canPrestige = game.wave >= 5;
+    final nextBonus   = ((game.prestigeCount + 1) * 10).toInt();
 
     return Center(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        margin: const EdgeInsets.symmetric(horizontal: 24),
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Wave ${{game.wave - 1}} Complete!',
-              style: const TextStyle(
-                color: Colors.amber,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Header ──────────────────────────────────────────
+              Text(
+                '${{game.isBossWave ? "👑 Boss " : ""}}Wave ${{game.wave - 1}} Complete!',
+                style: const TextStyle(color: Colors.amber, fontSize: 22,
+                    fontWeight: FontWeight.bold),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Gold: ${{game.gold}}',
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-            ),
-            const Divider(color: Colors.white24, height: 24),
-            // Combat upgrade
-            _UpgradeButton(
-              label: '⚔ Combat (Lv.${{game.hero.level + 1}})',
-              description: 'Attack +50%',
-              cost: combatCost,
-              canAfford: _canAfford(combatCost),
-              onTap: () => _buy(combatCost, () => game.hero.upgradeAttack()),
-            ),
-            const SizedBox(height: 8),
-            // Defence upgrade
-            _UpgradeButton(
-              label: '🛡 Defence (Lv.${{game.hero.defenceLevel + 1}})',
-              description: 'HP +25%',
-              cost: defenceCost,
-              canAfford: _canAfford(defenceCost),
-              onTap: () => _buy(defenceCost, () => game.hero.upgradeDefence()),
-            ),
-            const SizedBox(height: 8),
-            // Economy upgrade
-            _UpgradeButton(
-              label: '💰 Economy (Lv.${{game.hero.economyLevel + 1}})',
-              description: 'Gold per wave +25%',
-              cost: economyCost,
-              canAfford: _canAfford(economyCost),
-              onTap: () => _buy(economyCost, () => game.hero.upgradeEconomy()),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => game.overlays.remove('Upgrade'),
-              child: const Text(
-                'Continue →',
-                style: TextStyle(color: Colors.white70, fontSize: 16),
+              const SizedBox(height: 4),
+              Text('💰 ${{game.gold}}',
+                  style: const TextStyle(color: Colors.white, fontSize: 16)),
+              Text('Hero Lv.${{game.hero.heroLevel}}  '
+                  'XP ${{game.hero.xp}}/${{game.hero.xpToNextLevel}}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13)),
+
+              // ── Speed controls ───────────────────────────────────
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Speed:',
+                      style: TextStyle(color: Colors.white54, fontSize: 13)),
+                  const SizedBox(width: 8),
+                  ...[1, 2, 5].map((s) {{
+                    final sel = game.speedMultiplier == s;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              sel ? Colors.amber : Colors.grey[800],
+                          foregroundColor: sel ? Colors.black : Colors.white70,
+                          minimumSize: const Size(44, 32),
+                          padding: EdgeInsets.zero,
+                          textStyle: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () =>
+                            setState(() => game.speedMultiplier = s),
+                        child: Text('${{s}}x'),
+                      ),
+                    );
+                  }}),
+                ],
               ),
-            ),
-          ],
+
+              const Divider(color: Colors.white24, height: 20),
+
+              // ── Upgrade buttons ──────────────────────────────────
+              _UpgradeButton(
+                label: '⚔ Combat (Lv.${{game.hero.level + 1}})',
+                description: 'Attack +50%',
+                cost: combatCost,
+                canAfford: _canAfford(combatCost),
+                onTap: () => _buy(combatCost, game.hero.upgradeAttack),
+              ),
+              const SizedBox(height: 8),
+              _UpgradeButton(
+                label: '🛡 Defence (Lv.${{game.hero.defenceLevel + 1}})',
+                description: 'HP +25%',
+                cost: defenceCost,
+                canAfford: _canAfford(defenceCost),
+                onTap: () => _buy(defenceCost, game.hero.upgradeDefence),
+              ),
+              const SizedBox(height: 8),
+              _UpgradeButton(
+                label: '💰 Economy (Lv.${{game.hero.economyLevel + 1}})',
+                description: 'Gold per wave +25%',
+                cost: economyCost,
+                canAfford: _canAfford(economyCost),
+                onTap: () => _buy(economyCost, game.hero.upgradeEconomy),
+              ),
+
+              // ── Prestige option (available after wave 5) ─────────
+              if (canPrestige) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '✨ Prestige Available',
+                        style: const TextStyle(
+                            color: Colors.amber, fontWeight: FontWeight.bold,
+                            fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Reset progress for permanent +${{nextBonus}}% all stats',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber[700],
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size.fromHeight(36),
+                          textStyle: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        onPressed: () {{
+                          game.overlays.remove('Upgrade');
+                          game.prestige();
+                        }},
+                        child: const Text('✨ Prestige!'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => game.overlays.remove('Upgrade'),
+                child: const Text('Continue \u2192',
+                    style: TextStyle(color: Colors.white70, fontSize: 16)),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -505,11 +866,15 @@ class _UpgradeButton extends StatelessWidget {{
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(description, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              Text(label,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(description,
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.white70)),
             ],
           ),
-          Text('$cost 🪙', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('$cost 🪙',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -668,32 +1033,166 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SaveManager {
   int gold = 0;
   int wave = 1;
+  int heroLevel = 1;
+  int xp = 0;
+  int prestigeCount = 0;
   int lastSaveTime = 0;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    gold = prefs.getInt('save_gold') ?? 0;
-    wave = prefs.getInt('save_wave') ?? 1;
-    lastSaveTime = prefs.getInt('save_timestamp') ?? 0;
+    gold         = prefs.getInt('save_gold')          ?? 0;
+    wave         = prefs.getInt('save_wave')          ?? 1;
+    heroLevel    = prefs.getInt('save_hero_level')    ?? 1;
+    xp           = prefs.getInt('save_xp')            ?? 0;
+    prestigeCount = prefs.getInt('save_prestige')     ?? 0;
+    lastSaveTime = prefs.getInt('save_timestamp')     ?? 0;
   }
 
-  Future<void> save({required int gold, required int wave}) async {
+  Future<void> save({
+    required int gold,
+    required int wave,
+    required int heroLevel,
+    required int xp,
+    required int prestigeCount,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('save_gold', gold);
-    await prefs.setInt('save_wave', wave);
-    await prefs.setInt('save_timestamp', DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt('save_gold',       gold);
+    await prefs.setInt('save_wave',       wave);
+    await prefs.setInt('save_hero_level', heroLevel);
+    await prefs.setInt('save_xp',         xp);
+    await prefs.setInt('save_prestige',   prestigeCount);
+    await prefs.setInt('save_timestamp',
+        DateTime.now().millisecondsSinceEpoch);
   }
 
   Future<void> reset() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('save_gold');
-    await prefs.remove('save_wave');
-    await prefs.remove('save_timestamp');
-    gold = 0;
-    wave = 1;
-    lastSaveTime = 0;
+    for (final key in [
+      'save_gold', 'save_wave', 'save_hero_level',
+      'save_xp', 'save_prestige', 'save_timestamp',
+    ]) {
+      await prefs.remove(key);
+    }
+    gold = 0; wave = 1; heroLevel = 1;
+    xp = 0; prestigeCount = 0; lastSaveTime = 0;
   }
 }
+"""
+
+
+# ---------------------------------------------------------------------------
+# lib/game/game_over_overlay.dart
+# ---------------------------------------------------------------------------
+
+
+def _game_over_overlay_dart(name: str) -> str:
+    return f"""\
+import 'package:flutter/material.dart';
+import 'game.dart';
+
+/// Shown when the hero's HP reaches zero.
+/// Offers Try Again (hero restored, same wave) or Prestige (reset + bonus).
+class GameOverOverlay extends StatelessWidget {{
+  final {name}Game game;
+
+  const GameOverOverlay({{required this.game, super.key}});
+
+  @override
+  Widget build(BuildContext context) {{
+    final nextBonus = ((game.prestigeCount + 1) * 10).toInt();
+
+    return Container(
+      color: Colors.black.withOpacity(0.78),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1a1a2e),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.redAccent, width: 2),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '⚔ HERO FALLEN',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('Reached Wave ${{game.wave}}',
+                  style: const TextStyle(color: Colors.white, fontSize: 20)),
+              Text('💰 Gold: ${{game.gold}}',
+                  style: const TextStyle(color: Colors.amber, fontSize: 16)),
+              if (game.prestigeCount > 0)
+                Text('✨ Prestige level: ${{game.prestigeCount}}',
+                    style: const TextStyle(color: Colors.amber, fontSize: 14)),
+              const SizedBox(height: 20),
+
+              // ── Prestige section ───────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: Colors.amber.withOpacity(0.35)),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      '✨ Prestige Available',
+                      style: TextStyle(
+                          color: Colors.amber,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Reset and earn +$nextBonus% permanent stat bonus',
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber[700],
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size.fromHeight(42),
+                        textStyle: const TextStyle(
+                            fontWeight: FontWeight.bold),
+                      ),
+                      icon: const Text('✨', style: TextStyle(fontSize: 18)),
+                      label: const Text('Prestige!'),
+                      onPressed: game.prestige,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: const BorderSide(color: Colors.white30),
+                  minimumSize: const Size.fromHeight(42),
+                ),
+                onPressed: game.tryAgain,
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }}
+}}
 """
 
 
@@ -1337,16 +1836,30 @@ class {name}App extends StatefulWidget {{
 class _{name}AppState extends State<{name}App> {{
   int _selectedIndex = 0;
 
+  /// Stored so _SpeedButtons can read/write speedMultiplier.
+  late final {name}Game _game;
+
   late final List<Widget> _screens;
 
   @override
   void initState() {{
     super.initState();
+    _game = {name}Game();
     _screens = [
-      GameWidget<{name}Game>(
-        game: {name}Game(),
-        loadingBuilder: (context) =>
-            const Center(child: CircularProgressIndicator(color: Colors.amber)),
+      // Battle tab: GameWidget with persistent speed-control overlay
+      Stack(
+        children: [
+          GameWidget<{name}Game>(
+            game: _game,
+            loadingBuilder: (context) => const Center(
+                child: CircularProgressIndicator(color: Colors.amber)),
+          ),
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: _SpeedButtons(game: _game),
+          ),
+        ],
       ),
       const QuestLogScreen(),
       const CharactersScreen(),
@@ -1394,6 +1907,53 @@ class _{name}AppState extends State<{name}App> {{
     );
   }}
 }}
+
+/// Persistent 1×/2×/5× speed selector shown over the battle screen.
+class _SpeedButtons extends StatefulWidget {{
+  final {name}Game game;
+  const _SpeedButtons({{required this.game}});
+
+  @override
+  State<_SpeedButtons> createState() => _SpeedButtonsState();
+}}
+
+class _SpeedButtonsState extends State<_SpeedButtons> {{
+  @override
+  Widget build(BuildContext context) {{
+    final cur = widget.game.speedMultiplier;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [1, 2, 5].map((s) {{
+          final selected = cur == s;
+          return GestureDetector(
+            onTap: () => setState(() => widget.game.speedMultiplier = s),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: selected ? Colors.amber : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${{s}}x',
+                style: TextStyle(
+                  color: selected ? Colors.black : Colors.white70,
+                  fontWeight:
+                      selected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          );
+        }}).toList(),
+      ),
+    );
+  }}
+}}
 """
 
 
@@ -1408,21 +1968,25 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
 /// Floating damage number that drifts upward and fades out.
+/// When [isCrit] is true it shows in red with "CRIT!" suffix and larger size.
 class DamageText extends TextComponent {
-  static const double _duration = 0.8;
-  static const double _riseSpeed = 55;
+  static const double _duration = 0.85;
+  static const double _riseSpeed = 60;
 
   double _elapsed = 0;
 
-  DamageText({required int amount, required Vector2 position})
-      : super(
-          text: '+$amount',
+  DamageText({
+    required int amount,
+    required Vector2 position,
+    bool isCrit = false,
+  }) : super(
+          text: isCrit ? '$amount CRIT!' : '+$amount',
           textRenderer: TextPaint(
-            style: const TextStyle(
-              color: Colors.yellowAccent,
-              fontSize: 20,
+            style: TextStyle(
+              color: isCrit ? Colors.redAccent : Colors.yellowAccent,
+              fontSize: isCrit ? 26 : 20,
               fontWeight: FontWeight.bold,
-              shadows: [
+              shadows: const [
                 Shadow(
                     color: Colors.black,
                     offset: Offset(1, 1),
