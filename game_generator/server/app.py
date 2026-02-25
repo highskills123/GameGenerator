@@ -70,8 +70,6 @@ class GenerateRequest(BaseModel):
     online: bool = False
     auto_fix: bool = False
     run_validation: bool = False
-    smoke_test: bool = False
-    smoke_test_mode: str = "test"
     design_doc: bool = False
     design_doc_format: str = "json"
     ollama_base_url: Optional[str] = None
@@ -101,8 +99,6 @@ def _run_generation(run_id: str, req: GenerateRequest, runs_dir: str) -> None:
             scope=req.scope,
             auto_fix=req.auto_fix,
             run_validation=req.run_validation,
-            smoke_test=req.smoke_test,
-            smoke_test_mode=req.smoke_test_mode,
             design_doc=req.design_doc,
             design_doc_format=req.design_doc_format,
             ollama_base_url=req.ollama_base_url,

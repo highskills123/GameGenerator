@@ -53,9 +53,6 @@ class GenerateRequest(BaseModel):
     art_style: str = "pixel-art"
     online: bool = False
     auto_fix: bool = False
-    run_validation: bool = False
-    smoke_test: bool = False
-    smoke_test_mode: str = "test"
     json_logs: bool = False
 
 
@@ -82,9 +79,6 @@ def _run_generation(run_id: str, req: GenerateRequest) -> None:
             platform=req.platform,
             scope=req.scope,
             auto_fix=req.auto_fix,
-            run_validation=req.run_validation,
-            smoke_test=req.smoke_test,
-            smoke_test_mode=req.smoke_test_mode,
             constraint_overrides={
                 "art_style": req.art_style,
                 "online": req.online or None,

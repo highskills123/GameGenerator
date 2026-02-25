@@ -17,7 +17,6 @@ import tempfile
 from typing import Any, Dict, Optional
 
 from .constraint_resolver import ConstraintResolver
-from .run_tracker import RunTracker
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,6 @@ class Orchestrator:
         ollama_max_tokens: Optional[int] = None,
         ollama_timeout: Optional[int] = None,
         ollama_seed: Optional[int] = None,
-        run_tracker: Optional[RunTracker] = None,
     ) -> None:
         """
         Execute the full game generation pipeline.
@@ -79,8 +77,6 @@ class Orchestrator:
             ollama_max_tokens:    Max tokens to generate.
             ollama_timeout:       HTTP request timeout in seconds.
             ollama_seed:          Random seed for reproducibility.
-            run_tracker:          Optional :class:`RunTracker` for structured
-                                  logging and progress events.
         """
         from game_generator.spec import generate_spec
         from game_generator.scaffolder import scaffold_project
@@ -88,13 +84,7 @@ class Orchestrator:
         from game_generator.zip_exporter import export_to_zip
         from workers.validator import ValidatorWorker
 
-        # Convenience helper – emit event + print only when tracker is present
-        def _emit(stage: str, message: str, percent: Optional[int] = None) -> None:
-            if run_tracker is not None:
-                run_tracker.emit(stage, message, percent=percent)
-
         # ── 1. Resolve constraints ──────────────────────────────────────
-        _emit("constraints", "Resolving constraints …", percent=0)
         resolver = ConstraintResolver(interactive=self.interactive)
         constraints = resolver.resolve(
             {
@@ -107,7 +97,6 @@ class Orchestrator:
 
         # ── 2. Generate GameSpec ────────────────────────────────────────
         print("[1/4] Generating game spec …")
-        _emit("spec", "Generating game spec …", percent=10)
         spec = generate_spec(prompt, translator=translator)
         # Merge constraints into spec so downstream workers can read them.
         spec.update(
@@ -123,7 +112,6 @@ class Orchestrator:
             spec["assets_dir"] = assets_dir
         print(f"      Title : {spec['title']}")
         print(f"      Genre : {spec['genre']}")
-        _emit("spec", f"Spec ready – title={spec['title']} genre={spec['genre']}", percent=20)
 
         # ── 2b. Optional design document generation ─────────────────────
         design_doc_content: Optional[str] = None
@@ -134,7 +122,6 @@ class Orchestrator:
                 design_doc_to_markdown,
             )
             print("[1b]  Generating Idle RPG design document via Ollama …")
-            _emit("design_doc", "Generating Idle RPG design document …", percent=25)
             try:
                 doc = generate_idle_rpg_design(
                     prompt,
@@ -148,8 +135,6 @@ class Orchestrator:
             except (RuntimeError, ValueError) as exc:
                 import sys
                 print(f"[ERROR] Design document generation failed: {exc}")
-                if run_tracker is not None:
-                    run_tracker.error(f"Design document generation failed: {exc}")
                 sys.exit(1)
 
             if design_doc_format == "md":
@@ -160,7 +145,6 @@ class Orchestrator:
                 design_doc_content = _json.dumps(doc, indent=2)
                 resolved_design_doc_path = design_doc_path or "assets/design/design.json"
             print(f"      Design doc will be written to: {resolved_design_doc_path}")
-            _emit("design_doc", f"Design doc ready → {resolved_design_doc_path}", percent=35)
 
         # ── 3–5. Scaffold, import assets, export ZIP ────────────────────
         with tempfile.TemporaryDirectory(prefix="aibase_game_") as tmp_dir:
@@ -169,25 +153,20 @@ class Orchestrator:
             imported_paths: list = []
             if assets_dir:
                 print("[2/4] Importing assets …")
-                _emit("assets", "Importing assets …", percent=40)
                 imported_paths = import_assets(spec, assets_dir, tmp_dir)
                 print(f"      Imported {len(imported_paths)} asset(s).")
-                _emit("assets", f"Imported {len(imported_paths)} asset(s).", percent=50)
             else:
                 print(
                     "[2/4] No --assets-dir supplied; "
                     "project will reference assets/imported/ (populate manually)."
                 )
-                _emit("assets", "No assets dir supplied; skipping import.", percent=50)
 
             # 4. Scaffold
             print("[3/4] Scaffolding Flutter/Flame project …")
-            _emit("scaffold", "Scaffolding Flutter/Flame project …", percent=60)
             project_files = scaffold_project(
                 spec, imported_asset_paths=imported_paths
             )
             print(f"      Generated {len(project_files)} file(s).")
-            _emit("scaffold", f"Generated {len(project_files)} file(s).", percent=75)
 
             # 4b. Inject design document into project files
             if design_doc_content is not None and resolved_design_doc_path is not None:
@@ -196,7 +175,6 @@ class Orchestrator:
             # 4c. Optional validation + auto-fix
             if auto_fix or run_validation:
                 print("[3b]  Running Flutter validation …")
-                _emit("validation", "Running Flutter validation …", percent=80)
                 worker = ValidatorWorker(
                     project_dir=tmp_dir, project_files=project_files
                 )
@@ -204,7 +182,6 @@ class Orchestrator:
                 success, logs = worker.validate(run_smoke_test=smoke_test, smoke_test_mode=smoke_test_mode)
                 if not success and auto_fix:
                     print("      Validation failed; attempting auto-fix …")
-                    _emit("validation", "Validation failed; attempting auto-fix …", percent=85)
                     project_files, applied_patches = worker.auto_fix(
                         spec, logs, project_files,
                         run_smoke_test=smoke_test,
@@ -214,13 +191,10 @@ class Orchestrator:
                         print(f"      Applied patches: {', '.join(applied_patches)}")
                     worker.project_files = project_files
                     worker.write_files()
-                _emit("validation", "Validation complete.", percent=90)
 
             # 5. ZIP
             print("[4/4] Creating ZIP …")
-            _emit("zip", "Creating ZIP archive …", percent=95)
             export_to_zip(project_files, tmp_dir, output_zip)
-            _emit("zip", f"ZIP created → {output_zip}", percent=100)
 
         print(f"\nDone!  ZIP: {output_zip}")
         print("  cd <unzipped-folder> && flutter pub get && flutter run\n")
