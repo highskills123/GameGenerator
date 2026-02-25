@@ -159,9 +159,9 @@ class Orchestrator:
                 import json as _json
                 design_doc_content = _json.dumps(doc, indent=2)
                 resolved_design_doc_path = design_doc_path or "assets/design/design.json"
-            print(f"      Design doc will be written to: {resolved_design_doc_path}")
             # Make design doc data available to the genre generator (e.g. idle_rpg)
             spec["design_doc_data"] = doc
+            print(f"      Design doc will be written to: {resolved_design_doc_path}")
             _emit("design_doc", f"Design doc ready → {resolved_design_doc_path}", percent=35)
 
         # ── 3–5. Scaffold, import assets, export ZIP ────────────────────
