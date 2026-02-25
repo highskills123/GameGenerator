@@ -1,7 +1,6 @@
 # Core (required)
 # ----------------
-# No mandatory external dependencies – the package works out of the box
-# using Python stdlib only.
+pydantic>=2.0.0
 
 # Optional: load .env config files
 python-dotenv>=1.0.0
