@@ -437,6 +437,108 @@ Contributions are welcome! Feel free to:
 - Submit pull requests
 - Improve documentation
 
+## Flutter/Flame Game Generator
+
+Generate a complete, playable Flutter/Flame game project and export it as a
+ZIP file — ready to open in any Flutter-enabled IDE.
+
+### Prerequisites (game generator only)
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.10 installed
+  on the machine that will **build** the generated project (not required just to
+  generate the ZIP).
+- Python dependencies already covered by `requirements.txt` — no extras needed.
+
+### Quick Start
+
+```bash
+# Minimal — genre inferred from prompt, no custom assets
+python aibase.py --generate-game \
+    --prompt "top down space shooter with bullets and enemies" \
+    --out my_shooter.zip
+
+# With a local assets folder
+python aibase.py --generate-game \
+    --prompt "idle RPG where heroes level up and auto-battle" \
+    --assets-dir "C:\Users\me\Desktop\MyAssetPack" \
+    --out idle_rpg.zip
+
+# Windows path quoting example
+python aibase.py --generate-game ^
+    --prompt "space shooter" ^
+    --assets-dir "C:\Users\high\Desktop\Tiny RPG Character Asset Pack v1.03" ^
+    --out C:\Users\high\Desktop\space_shooter.zip
+```
+
+After generation, unzip and run:
+
+```bash
+cd my_game_folder
+flutter pub get
+flutter run
+```
+
+### Supported Genres
+
+| Genre ID           | Description                                        |
+|--------------------|----------------------------------------------------|
+| `top_down_shooter` | Top-down shoot-'em-up with player, enemies, bullets |
+| `idle_rpg`         | Idle/incremental RPG with auto-battle and upgrades  |
+
+The genre is automatically inferred from your `--prompt`.  Keywords like
+*shoot*, *bullet*, *space* trigger `top_down_shooter`; *idle*, *rpg*, *level
+up* trigger `idle_rpg`.
+
+### Generated Project Structure
+
+```
+my_game/
+├── pubspec.yaml            # Flutter project manifest (includes Flame dep)
+├── lib/
+│   ├── main.dart           # App entry point + GameWidget
+│   └── game/
+│       ├── game.dart       # Main FlameGame subclass
+│       ├── player.dart     # (shooter) Player component
+│       ├── enemy.dart      # Enemy component
+│       ├── bullet.dart     # (shooter) Bullet component
+│       ├── bullet_pool.dart# (shooter) Object pool – no per-shot allocs
+│       ├── hud.dart        # Heads-up display
+│       └── ...             # Additional genre-specific files
+├── assets/
+│   └── imported/           # Assets copied from your --assets-dir
+├── README.md               # Per-game readme with controls and instructions
+└── ASSETS_LICENSE.md       # Reminds you to check asset licences
+```
+
+### Asset Import
+
+When `--assets-dir` is provided:
+
+1. Aibase scans the folder recursively for image files
+   (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) and audio files
+   (`.wav`, `.mp3`, `.ogg`).
+2. A heuristic matcher maps each required role (e.g. `player`, `enemy`,
+   `bullet`) to the best-matching filename using keyword scoring.
+3. Matched files are copied to `assets/imported/` inside the project and
+   referenced in `pubspec.yaml`.
+4. Roles with no matching file log a warning; the generated Dart code will
+   still compile but you should replace placeholders before publishing.
+
+### Asset Licensing Note
+
+Aibase does **not** automatically download assets from itch.io or any other
+online storefront.  All assets are sourced from the folder you explicitly
+provide.  You are responsible for ensuring that you hold an appropriate
+licence for every asset file you include in a game you distribute.  Consult
+the `ASSETS_LICENSE.md` file in every generated project for a reminder.
+
+### Extending: Adding a New Genre
+
+See [docs/game-generator.md](docs/game-generator.md) for a step-by-step guide
+on implementing a new genre plugin.
+
+---
+
 ## License
 
 This project is open source and available under the MIT License.
