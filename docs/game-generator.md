@@ -163,6 +163,78 @@ python aibase.py --generate-game
 - Run `flutter pub get` inside the unzipped project before building.
 - `flutter analyze` should pass on any generated project.
 
+## Idle RPG UI Screens and Content Personalisation
+
+When the `idle_rpg` genre is selected the generator produces three Flutter
+navigation screens in addition to the Flame game itself:
+
+| Screen | File | Data source |
+|--------|------|-------------|
+| Quest Log | `lib/screens/quest_log_screen.dart` | `assets/data/quests.json` |
+| Characters | `lib/screens/characters_screen.dart` | `assets/data/characters.json` |
+| Shop | `lib/screens/shop_screen.dart` | `assets/data/items.json` |
+
+A `BottomNavigationBar` in `lib/main.dart` lets players switch between the
+Flame battle view and these three screens.
+
+### JSON data files
+
+Four JSON files are written to `assets/data/` and declared in `pubspec.yaml`:
+
+```
+assets/data/quests.json      – list of quest objects
+assets/data/characters.json  – list of character objects
+assets/data/items.json       – list of item objects (shop)
+assets/data/locations.json   – list of location objects
+```
+
+When `--design-doc` is passed (and Ollama is available), the generator
+populates these files with real names, summaries, and lore taken directly from
+the generated design document.  Without `--design-doc` the files contain
+sensible placeholder data so the project still builds and runs immediately.
+
+### Customising the content
+
+Edit the JSON files in `assets/data/` after generation to add your own quests,
+characters, and items.  No code changes are needed – the screens load data via
+`rootBundle.loadString` at runtime.
+
+Each quest object supports the following keys:
+
+```json
+{
+  "title":       "Quest title",
+  "summary":     "Short description shown in the list",
+  "giver":       "NPC name",
+  "level_range": [1, 5],
+  "objectives":  ["objective 1", "..."],
+  "rewards":     ["reward 1", "..."]
+}
+```
+
+Each character object:
+
+```json
+{
+  "name":        "Character Name",
+  "role":        "Hero | NPC | Villain",
+  "backstory":   "Brief backstory",
+  "motivations": ["motivation 1", "..."]
+}
+```
+
+Each item object:
+
+```json
+{
+  "name":        "Item Name",
+  "type":        "weapon | armor | consumable",
+  "rarity":      "common | rare | epic | legendary",
+  "description": "Short flavour text",
+  "stats":       {"attack": 5}
+}
+```
+
 ## Notes
 
 - Aibase does **not** download assets from itch.io or any other storefront.

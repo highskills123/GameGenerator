@@ -55,11 +55,15 @@ def scaffold_project(
     # Derive the main game class name from genre files
     game_class = _infer_game_class(spec)
 
-    # 2. main.dart  (orientation-locked for mobile)
-    files["lib/main.dart"] = _main_dart(spec, game_class)
+    # 2. main.dart  (only when the genre plugin did not already provide one)
+    if "lib/main.dart" not in files:
+        files["lib/main.dart"] = _main_dart(spec, game_class)
+
+    # Collect asset paths that the genre plugin generated (e.g. assets/data/*.json)
+    generated_asset_paths = [p for p in files if p.startswith("assets/")]
 
     # 3. pubspec.yaml
-    files["pubspec.yaml"] = _pubspec_yaml(spec, imported_asset_paths)
+    files["pubspec.yaml"] = _pubspec_yaml(spec, imported_asset_paths, generated_asset_paths)
 
     # 4. README.md  (loaded from template)
     files["README.md"] = _readme_md(spec)
@@ -141,15 +145,25 @@ class {game_class}App extends StatelessWidget {{
 """
 
 
-def _pubspec_yaml(spec: GameSpec, asset_paths: List[str]) -> str:
+def _pubspec_yaml(spec: GameSpec, asset_paths: List[str], generated_asset_paths: List[str] | None = None) -> str:
     title = spec.get("title", "my_game")
     # package name: lowercase, underscores
     pkg = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in title.lower()).strip("_")
     pkg = pkg or "my_game"
 
+    # Merge imported + generated asset paths
+    all_paths: List[str] = list(asset_paths or [])
+    if generated_asset_paths:
+        all_paths.extend(p for p in generated_asset_paths if p not in all_paths)
+
     asset_lines = ""
-    if asset_paths:
-        lines = "\n".join(f"    - {p}" for p in sorted(asset_paths))
+    if all_paths:
+        # Always include assets/imported/ so Flame sprites are resolvable
+        if not any(p == "assets/imported/" or p.startswith("assets/imported/") for p in all_paths):
+            all_paths = ["assets/imported/"] + sorted(all_paths)
+        else:
+            all_paths = sorted(all_paths)
+        lines = "\n".join(f"    - {p}" for p in all_paths)
         asset_lines = f"\n  assets:\n{lines}\n"
     else:
         asset_lines = "\n  assets:\n    - assets/imported/\n"

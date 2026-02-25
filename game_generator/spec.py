@@ -5,6 +5,10 @@ Converts a free-text user prompt into a structured GameSpec dictionary.
 Uses a lightweight keyword heuristic to classify the genre, then populates
 the spec.  If an Aibase ``AibaseTranslator`` instance is supplied, it tries
 to use Ollama for a richer spec; on failure it falls back to the heuristic.
+
+All generated specs are validated against :class:`schemas.GameSpecModel`
+before being returned.  Invalid specs raise :exc:`ValueError` with a
+helpful message listing every missing or invalid field.
 """
 
 from __future__ import annotations
@@ -51,6 +55,16 @@ def _classify_genre(prompt: str) -> str:
     return best
 
 
+def _validate(spec: GameSpec) -> GameSpec:
+    """Validate *spec* against GameSpecModel; raise ValueError on failure."""
+    try:
+        from schemas.game_spec import validate_game_spec
+        validate_game_spec(spec)
+    except ImportError:
+        pass  # schemas package not on path – skip validation
+    return spec
+
+
 def _heuristic_spec(prompt: str) -> GameSpec:
     """Build a GameSpec dict using pure heuristics (no AI required)."""
     genre = _classify_genre(prompt)
@@ -81,7 +95,7 @@ def _heuristic_spec(prompt: str) -> GameSpec:
         "scope": "prototype",
         "online": False,
     }
-    return spec
+    return _validate(spec)
 
 
 def _default_mechanics(genre: str) -> List[str]:
@@ -190,6 +204,11 @@ def _ollama_spec(prompt: str, translator: Any) -> Optional[GameSpec]:
             return None
         if data.get("genre") not in _GENRE_KEYWORDS:
             data["genre"] = _classify_genre(prompt)
+        try:
+            _validate(data)
+        except ValueError as ve:
+            logger.debug("Ollama spec failed schema validation (%s); falling back to heuristic.", ve)
+            return None
         return data
     except Exception as exc:
         logger.debug("Ollama spec generation failed (%s); falling back to heuristic.", exc)

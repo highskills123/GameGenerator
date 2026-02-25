@@ -233,6 +233,13 @@ def _parse_and_validate(raw: str) -> Dict[str, Any]:
                 f"'{key}' must be a string, got {type(data[key]).__name__}"
             )
 
+    # Deep-validate against the Pydantic schema model
+    try:
+        from schemas.idle_rpg_design_doc import validate_idle_rpg_design_doc
+        validate_idle_rpg_design_doc(data)
+    except ImportError:
+        pass  # schemas package not on path – skip Pydantic validation
+
     return data
 
 
