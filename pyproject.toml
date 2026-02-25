@@ -11,8 +11,8 @@ license = { text = "MIT" }
 requires-python = ">=3.9"
 keywords = ["game design", "procedural generation", "AI", "NPC dialogue", "stable diffusion"]
 
-# No mandatory external runtime dependencies
-dependencies = []
+# colorama is imported at the top level of gamegen.py
+dependencies = ["colorama>=0.4.6"]
 
 [project.optional-dependencies]
 config = ["python-dotenv>=1.0.0"]
