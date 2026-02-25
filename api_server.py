@@ -516,10 +516,6 @@ def not_found(e):
         'success': False,
         'error': 'Endpoint not found'
     }), 404
-
-
-@app.errorhandler(500)
-def internal_error(e):
     """Handle 500 errors."""
     return jsonify({
         'success': False,
