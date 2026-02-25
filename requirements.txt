@@ -1,0 +1,21 @@
+# Core (required)
+# ----------------
+# No mandatory external dependencies – the package works out of the box
+# using Python stdlib only.
+
+# Optional: load .env config files
+python-dotenv>=1.0.0
+
+# Optional: enable Ollama / HuggingFace API backends
+requests>=2.28.0
+
+# Optional: local 🤗 diffusers image generation
+# (requires GPU + model weights supplied by the user – do NOT commit weights)
+# diffusers>=0.25.0
+# transformers>=4.35.0
+# accelerate>=0.24.0
+# torch>=2.0.0      # or install torch with CUDA: pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
