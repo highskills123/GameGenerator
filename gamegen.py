@@ -79,6 +79,30 @@ Examples:
     parser.add_argument("--timeout", type=int,
                         help="Ollama request timeout in seconds")
 
+    # Design doc flags
+    parser.add_argument("--design-doc", dest="design_doc", action="store_true",
+                        help="Generate an Idle RPG design document via Ollama")
+    parser.add_argument("--design-doc-format", dest="design_doc_format",
+                        choices=["json", "md"], default="json",
+                        help="Design document output format (default: json)")
+    parser.add_argument("--design-doc-path", dest="design_doc_path",
+                        help="Path inside the project ZIP for the design doc "
+                             "(default: assets/design/design.json or DESIGN.md)")
+    parser.add_argument("--ollama-base-url", dest="ollama_base_url",
+                        default="http://localhost:11434",
+                        help="Ollama server base URL (default: http://localhost:11434)")
+    parser.add_argument("--ollama-model", dest="ollama_model",
+                        default="qwen2.5-coder:7b",
+                        help="Ollama model for design doc generation (default: qwen2.5-coder:7b)")
+    parser.add_argument("--ollama-temperature", dest="ollama_temperature", type=float,
+                        help="Sampling temperature for design doc generation")
+    parser.add_argument("--ollama-max-tokens", dest="ollama_max_tokens", type=int,
+                        help="Max tokens for design doc generation")
+    parser.add_argument("--ollama-timeout", dest="ollama_timeout", type=int,
+                        help="Request timeout for design doc generation (seconds)")
+    parser.add_argument("--ollama-seed", dest="ollama_seed", type=int,
+                        help="Random seed for design doc generation")
+
     return parser
 
 
@@ -124,6 +148,15 @@ def main() -> None:
                 "art_style": args.art_style,
                 "online": args.online if args.online else None,
             },
+            design_doc=args.design_doc,
+            design_doc_format=args.design_doc_format,
+            design_doc_path=args.design_doc_path,
+            ollama_base_url=args.ollama_base_url,
+            ollama_model=args.ollama_model,
+            ollama_temperature=args.ollama_temperature,
+            ollama_max_tokens=args.ollama_max_tokens,
+            ollama_timeout=args.ollama_timeout,
+            ollama_seed=args.ollama_seed,
         )
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
