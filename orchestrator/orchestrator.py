@@ -36,6 +36,7 @@ class Orchestrator:
         scope: str = "prototype",
         auto_fix: bool = False,
         run_validation: bool = False,
+        run_tests: bool = False,
         translator: Any = None,
         constraint_overrides: Optional[Dict[str, Any]] = None,
         design_doc: bool = False,
@@ -59,7 +60,10 @@ class Orchestrator:
             scope:                "prototype" or "vertical-slice".
             auto_fix:             Re-run validation after patching (implies
                                   run_validation=True).
-            run_validation:       Run ``flutter pub get`` + ``flutter analyze``.
+            run_validation:       Run ``dart format`` + ``flutter pub get`` +
+                                  ``flutter analyze``.
+            run_tests:            Also run ``flutter test`` (injects a smoke
+                                  test if no test files exist).
             translator:           Optional AibaseTranslator for Ollama spec.
             constraint_overrides: Extra constraints from the caller.
             design_doc:           When True, generate an Idle RPG design document.
@@ -173,10 +177,12 @@ class Orchestrator:
                     project_dir=tmp_dir, project_files=project_files
                 )
                 worker.write_files()
-                success, logs = worker.validate()
+                success, logs = worker.validate(run_tests=run_tests)
                 if not success and auto_fix:
                     print("      Validation failed; attempting auto-fix …")
-                    project_files = worker.auto_fix(spec, logs, project_files)
+                    project_files = worker.auto_fix(
+                        spec, logs, project_files, run_tests=run_tests
+                    )
                     worker.project_files = project_files
                     worker.write_files()
 
