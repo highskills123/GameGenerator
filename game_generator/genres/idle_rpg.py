@@ -74,6 +74,20 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/screens/combat_screen.dart"] = _combat_screen_dart(title)
     files["lib/screens/settings_screen.dart"] = _settings_screen_dart(title)
 
+    # Dungeon / Town / Skills data files
+    files["assets/data/dungeon_layers.json"] = _dungeon_layers_json(design_doc)
+    files["assets/data/skills.json"] = _skills_json()
+    files["assets/data/town_map.json"] = _town_map_json()
+
+    # New screens
+    files["lib/screens/dungeon_screen.dart"] = _dungeon_screen_dart(title)
+    files["lib/screens/town_map_screen.dart"] = _town_map_screen_dart(title)
+    files["lib/screens/skills_screen.dart"] = _skills_screen_dart(safe_name, title)
+    files["lib/screens/store_screen.dart"] = _store_screen_dart(title)
+
+    # Ad service wrapper
+    files["lib/services/ad_service.dart"] = _ad_service_dart()
+
     # Custom main.dart with bottom-navigation layout
     orientation = spec.get("orientation", "portrait")
     files["lib/main.dart"] = _main_dart_with_nav(safe_name, title, orientation)
@@ -99,12 +113,15 @@ import 'upgrade_overlay.dart';
 import 'save_manager.dart';
 import 'damage_text.dart';
 import 'game_over_overlay.dart';
+import '../services/ad_service.dart';
 
 class {name}Game extends FlameGame with TapCallbacks {{
   // ── Persistent state ──────────────────────────────────────────────
   int gold = 0;
+  int diamonds = 0;
   int wave = 1;
   int prestigeCount = 0;
+  int currentDungeonLayer = 1;
 
   /// +10 % all stats per prestige level.
   double get prestigeBonus => 1.0 + prestigeCount * 0.10;
@@ -116,6 +133,9 @@ class {name}Game extends FlameGame with TapCallbacks {{
   // ── Session state ─────────────────────────────────────────────────
   bool isGameOver = false;
 
+  // ── Services ──────────────────────────────────────────────────────
+  late final AdService adService;
+
   // ── Entities ──────────────────────────────────────────────────────
   late GameHero hero;
   late GameEnemy enemy;
@@ -126,11 +146,16 @@ class {name}Game extends FlameGame with TapCallbacks {{
   Future<void> onLoad() async {{
     await super.onLoad();
 
+    adService = AdService();
+    await adService.initialize();
+
     saveManager = SaveManager();
     await saveManager.load();
     gold = saveManager.gold;
+    diamonds = saveManager.diamonds;
     wave = saveManager.wave;
     prestigeCount = saveManager.prestigeCount;
+    currentDungeonLayer = saveManager.currentDungeonLayer;
 
     // Background
     add(RectangleComponent(size: size, paint: Paint()..color = const Color(0xFF1a1a2e)));
@@ -176,10 +201,12 @@ class {name}Game extends FlameGame with TapCallbacks {{
   void _persist() {{
     saveManager.save(
       gold: gold,
+      diamonds: diamonds,
       wave: wave,
       heroLevel: hero.heroLevel,
       xp: hero.xp,
       prestigeCount: prestigeCount,
+      currentDungeonLayer: currentDungeonLayer,
     );
   }}
 
@@ -216,7 +243,17 @@ class {name}Game extends FlameGame with TapCallbacks {{
     final baseGold = wave * 10 * (enemy.isBoss ? 5 : 1);
     gold += (baseGold * hero.goldMultiplier * prestigeBonus).round();
     hero.gainXp(wave * (enemy.isBoss ? 10 : 3));
+    // Award 1 diamond every 10 waves, 5 for boss wave
+    if (enemy.isBoss) {{
+      diamonds += 5;
+    }} else if (wave % 10 == 0) {{
+      diamonds += 1;
+    }}
     wave++;
+    // Advance dungeon layer every 10 waves
+    if (wave > currentDungeonLayer * 10) {{
+      currentDungeonLayer++;
+    }}
     _persist();
     _respawnEnemy();
     overlays.add('Upgrade');
@@ -240,6 +277,7 @@ class {name}Game extends FlameGame with TapCallbacks {{
     prestigeCount++;
     gold = 0;
     wave = 1;
+    currentDungeonLayer = 1;
     hero.resetForPrestige(prestigeBonus);
     isGameOver = false;
     overlays.remove('GameOver');
@@ -258,8 +296,27 @@ class {name}Game extends FlameGame with TapCallbacks {{
     _respawnEnemy();
   }}
 
+  /// Award diamonds (from IAP callback or bonuses).
+  void earnDiamonds(int amount) {{
+    diamonds += amount;
+    _persist();
+  }}
+
+  /// Show a rewarded ad; on success double the current gold.
+  void watchAdForGold({{required VoidCallback onComplete}}) {{
+    adService.showRewardedAd(
+      onRewarded: (bonus) {{
+        gold += gold; // 2× current gold
+        _persist();
+        onComplete();
+      }},
+    );
+  }}
+
   /// Whether the current wave is a boss wave.
   bool get isBossWave => wave % 5 == 0 && wave > 0;
+
+  bool get isAdReady => adService.isAdReady;
 
   void _respawnEnemy() {{
     enemy.removeFromParent();
@@ -612,8 +669,11 @@ class Hud extends PositionComponent with HasGameRef<{name}Game> {{
     final g = gameRef;
     final h = g.hero;
 
-    // Gold
+    // Gold (left)
     _gold.render(canvas, '💰 ${{g.gold}}', Vector2(10, 10));
+
+    // Diamonds (top-right)
+    _gold.render(canvas, '💎 ${{g.diamonds}}', Vector2(g.size.x - 80, 10));
 
     // Wave + speed (boss flag)
     final bossTag = g.isBossWave ? '👑 BOSS ' : '';
@@ -1032,35 +1092,43 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Persists and loads game state using SharedPreferences.
 class SaveManager {
   int gold = 0;
+  int diamonds = 0;
   int wave = 1;
   int heroLevel = 1;
   int xp = 0;
   int prestigeCount = 0;
+  int currentDungeonLayer = 1;
   int lastSaveTime = 0;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    gold         = prefs.getInt('save_gold')          ?? 0;
-    wave         = prefs.getInt('save_wave')          ?? 1;
-    heroLevel    = prefs.getInt('save_hero_level')    ?? 1;
-    xp           = prefs.getInt('save_xp')            ?? 0;
-    prestigeCount = prefs.getInt('save_prestige')     ?? 0;
-    lastSaveTime = prefs.getInt('save_timestamp')     ?? 0;
+    gold                = prefs.getInt('save_gold')           ?? 0;
+    diamonds            = prefs.getInt('save_diamonds')       ?? 0;
+    wave                = prefs.getInt('save_wave')           ?? 1;
+    heroLevel           = prefs.getInt('save_hero_level')     ?? 1;
+    xp                  = prefs.getInt('save_xp')             ?? 0;
+    prestigeCount       = prefs.getInt('save_prestige')       ?? 0;
+    currentDungeonLayer = prefs.getInt('save_dungeon_layer')  ?? 1;
+    lastSaveTime        = prefs.getInt('save_timestamp')      ?? 0;
   }
 
   Future<void> save({
     required int gold,
+    required int diamonds,
     required int wave,
     required int heroLevel,
     required int xp,
     required int prestigeCount,
+    required int currentDungeonLayer,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('save_gold',       gold);
-    await prefs.setInt('save_wave',       wave);
-    await prefs.setInt('save_hero_level', heroLevel);
-    await prefs.setInt('save_xp',         xp);
-    await prefs.setInt('save_prestige',   prestigeCount);
+    await prefs.setInt('save_gold',          gold);
+    await prefs.setInt('save_diamonds',      diamonds);
+    await prefs.setInt('save_wave',          wave);
+    await prefs.setInt('save_hero_level',    heroLevel);
+    await prefs.setInt('save_xp',            xp);
+    await prefs.setInt('save_prestige',      prestigeCount);
+    await prefs.setInt('save_dungeon_layer', currentDungeonLayer);
     await prefs.setInt('save_timestamp',
         DateTime.now().millisecondsSinceEpoch);
   }
@@ -1068,13 +1136,13 @@ class SaveManager {
   Future<void> reset() async {
     final prefs = await SharedPreferences.getInstance();
     for (final key in [
-      'save_gold', 'save_wave', 'save_hero_level',
-      'save_xp', 'save_prestige', 'save_timestamp',
+      'save_gold', 'save_diamonds', 'save_wave', 'save_hero_level',
+      'save_xp', 'save_prestige', 'save_dungeon_layer', 'save_timestamp',
     ]) {
       await prefs.remove(key);
     }
-    gold = 0; wave = 1; heroLevel = 1;
-    xp = 0; prestigeCount = 0; lastSaveTime = 0;
+    gold = 0; diamonds = 0; wave = 1; heroLevel = 1;
+    xp = 0; prestigeCount = 0; currentDungeonLayer = 1; lastSaveTime = 0;
   }
 }
 """
@@ -1091,11 +1159,19 @@ import 'package:flutter/material.dart';
 import 'game.dart';
 
 /// Shown when the hero's HP reaches zero.
-/// Offers Try Again (hero restored, same wave) or Prestige (reset + bonus).
-class GameOverOverlay extends StatelessWidget {{
+/// Offers Watch Ad (2× gold), Try Again, or Prestige.
+class GameOverOverlay extends StatefulWidget {{
   final {name}Game game;
 
   const GameOverOverlay({{required this.game, super.key}});
+
+  @override
+  State<GameOverOverlay> createState() => _GameOverOverlayState();
+}}
+
+class _GameOverOverlayState extends State<GameOverOverlay> {{
+  {name}Game get game => widget.game;
+  bool _adWatched = false;
 
   @override
   Widget build(BuildContext context) {{
@@ -1104,89 +1180,136 @@ class GameOverOverlay extends StatelessWidget {{
     return Container(
       color: Colors.black.withOpacity(0.78),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1a1a2e),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.redAccent, width: 2),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                '⚔ HERO FALLEN',
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1a1a2e),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.redAccent, width: 2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '⚔ HERO FALLEN',
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text('Reached Wave ${{game.wave}}',
-                  style: const TextStyle(color: Colors.white, fontSize: 20)),
-              Text('💰 Gold: ${{game.gold}}',
-                  style: const TextStyle(color: Colors.amber, fontSize: 16)),
-              if (game.prestigeCount > 0)
-                Text('✨ Prestige level: ${{game.prestigeCount}}',
-                    style: const TextStyle(color: Colors.amber, fontSize: 14)),
-              const SizedBox(height: 20),
+                const SizedBox(height: 10),
+                Text('Reached Wave ${{game.wave}}',
+                    style: const TextStyle(color: Colors.white, fontSize: 20)),
+                Text('💰 Gold: ${{game.gold}}',
+                    style: const TextStyle(color: Colors.amber, fontSize: 16)),
+                Text('💎 Diamonds: ${{game.diamonds}}',
+                    style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 14)),
+                if (game.prestigeCount > 0)
+                  Text('✨ Prestige level: ${{game.prestigeCount}}',
+                      style: const TextStyle(color: Colors.amber, fontSize: 14)),
+                const SizedBox(height: 16),
 
-              // ── Prestige section ───────────────────────────────────
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: Colors.amber.withOpacity(0.35)),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      '✨ Prestige Available',
-                      style: TextStyle(
-                          color: Colors.amber,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15),
+                // ── Watch Ad → 2× Gold ─────────────────────────────────
+                if (!_adWatched)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.withOpacity(0.40)),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Reset and earn +$nextBonus% permanent stat bonus',
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 12),
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      children: [
+                        const Text('📺 Double Your Gold!',
+                            style: TextStyle(
+                                color: Colors.lightBlueAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                        const SizedBox(height: 4),
+                        const Text('Watch a short ad to 2× your current gold.',
+                            style: TextStyle(color: Colors.white54, fontSize: 12),
+                            textAlign: TextAlign.center),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(40),
+                          ),
+                          icon: const Icon(Icons.play_circle, size: 18),
+                          label: Text(
+                            game.isAdReady ? 'Watch Ad → 2× Gold' : '⌛ Loading Ad...',
+                          ),
+                          onPressed: game.isAdReady
+                              ? () => game.watchAdForGold(
+                                    onComplete: () => setState(() => _adWatched = true),
+                                  )
+                              : null,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber[700],
-                        foregroundColor: Colors.black,
-                        minimumSize: const Size.fromHeight(42),
-                        textStyle: const TextStyle(
-                            fontWeight: FontWeight.bold),
+                  ),
+
+                const SizedBox(height: 14),
+
+                // ── Prestige section ───────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.amber.withOpacity(0.35)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        '✨ Prestige Available',
+                        style: TextStyle(
+                            color: Colors.amber,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15),
                       ),
-                      icon: const Text('✨', style: TextStyle(fontSize: 18)),
-                      label: const Text('Prestige!'),
-                      onPressed: game.prestige,
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Reset and earn +$nextBonus% permanent stat bonus',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber[700],
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size.fromHeight(42),
+                          textStyle: const TextStyle(
+                              fontWeight: FontWeight.bold),
+                        ),
+                        icon: const Text('✨', style: TextStyle(fontSize: 18)),
+                        label: const Text('Prestige!'),
+                        onPressed: game.prestige,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 14),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white30),
-                  minimumSize: const Size.fromHeight(42),
+                const SizedBox(height: 14),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white30),
+                    minimumSize: const Size.fromHeight(42),
+                  ),
+                  onPressed: game.tryAgain,
+                  child: const Text('Try Again'),
                 ),
-                onPressed: game.tryAgain,
-                child: const Text('Try Again'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1811,15 +1934,20 @@ def _main_dart_with_nav(name: str, title: str, orientation: str) -> str:
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'game/game.dart';
 import 'screens/quest_log_screen.dart';
 import 'screens/characters_screen.dart';
-import 'screens/shop_screen.dart';
-import 'screens/combat_screen.dart';
+import 'screens/dungeon_screen.dart';
+import 'screens/town_map_screen.dart';
+import 'screens/skills_screen.dart';
+import 'screens/store_screen.dart';
 import 'screens/settings_screen.dart';
 
 void main() async {{
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialise Google Mobile Ads SDK before the app starts.
+  await MobileAds.instance.initialize();
   await SystemChrome.setPreferredOrientations([
     {orient_values}
   ]);
@@ -1861,10 +1989,12 @@ class _{name}AppState extends State<{name}App> {{
           ),
         ],
       ),
+      const DungeonScreen(),
+      const TownMapScreen(),
+      const SkillsScreen(),
       const QuestLogScreen(),
+      const StoreScreen(),
       const CharactersScreen(),
-      const ShopScreen(),
-      const CombatScreen(),
       const SettingsScreen(),
     ];
   }}
@@ -1892,13 +2022,17 @@ class _{name}AppState extends State<{name}App> {{
             BottomNavigationBarItem(
                 icon: Icon(Icons.videogame_asset), label: 'Battle'),
             BottomNavigationBarItem(
+                icon: Icon(Icons.castle), label: 'Dungeon'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.location_city), label: 'Town'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.auto_awesome), label: 'Skills'),
+            BottomNavigationBarItem(
                 icon: Icon(Icons.assignment), label: 'Quests'),
             BottomNavigationBarItem(
+                icon: Icon(Icons.diamond), label: 'Store'),
+            BottomNavigationBarItem(
                 icon: Icon(Icons.people), label: 'Heroes'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.store), label: 'Shop'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.dangerous), label: 'Enemies'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.settings), label: 'Settings'),
           ],
@@ -2003,6 +2137,1164 @@ class DamageText extends TextComponent {
     _elapsed += dt;
     position.y -= _riseSpeed * dt;
     if (_elapsed >= _duration) removeFromParent();
+  }
+}
+"""
+
+
+# ---------------------------------------------------------------------------
+# New data JSON generators
+# ---------------------------------------------------------------------------
+
+
+def _dungeon_layers_json(design_doc=None) -> str:
+    """Five themed dungeon floors, each with enemies, a boss, and wave gate."""
+    floors = [
+        {
+            "floor": 1,
+            "name": "Forest Path",
+            "theme": "forest",
+            "description": "A misty trail through the ancient Thornwood.",
+            "min_wave": 1,
+            "enemies": ["Goblin Scout", "Wild Boar", "Bandit Lookout"],
+            "boss": {
+                "name": "Forest Troll",
+                "description": "A lumbering brute guarding the forest gate.",
+                "hp_multiplier": 8,
+                "gold_reward": 300,
+            },
+        },
+        {
+            "floor": 2,
+            "name": "Bandit Camps",
+            "theme": "outdoor",
+            "description": "Smoke rises from scattered outlaw encampments.",
+            "min_wave": 10,
+            "enemies": ["Bandit Rogue", "Crossbow Thief", "Camp Guard"],
+            "boss": {
+                "name": "Warlord Krang",
+                "description": "Ruthless bandit chief wielding a bone axe.",
+                "hp_multiplier": 10,
+                "gold_reward": 600,
+            },
+        },
+        {
+            "floor": 3,
+            "name": "Sunken Ruins",
+            "theme": "ruins",
+            "description": "Half-submerged temple ruins teeming with undead.",
+            "min_wave": 20,
+            "enemies": ["Skeleton Archer", "Cursed Warrior", "Drowned Shade"],
+            "boss": {
+                "name": "The Lich Acolyte",
+                "description": "A nascent lich raising the ruins' restless dead.",
+                "hp_multiplier": 12,
+                "gold_reward": 1000,
+            },
+        },
+        {
+            "floor": 4,
+            "name": "Crystal Caverns",
+            "theme": "cave",
+            "description": "Glittering crystal formations hide deadly spiders.",
+            "min_wave": 35,
+            "enemies": ["Crystal Spider", "Cave Troll", "Stone Golem"],
+            "boss": {
+                "name": "Prism Wyrm",
+                "description": "A serpentine beast refracting lethal light beams.",
+                "hp_multiplier": 15,
+                "gold_reward": 2000,
+            },
+        },
+        {
+            "floor": 5,
+            "name": "Obsidian Citadel",
+            "theme": "fire",
+            "description": "Volcanic fortress ruled by the infernal lord.",
+            "min_wave": 50,
+            "enemies": ["Infernal Knight", "Lava Golem", "Fire Succubus"],
+            "boss": {
+                "name": "Lord Ignarius",
+                "description": "The infernal ruler of the deepest vault.",
+                "hp_multiplier": 20,
+                "gold_reward": 5000,
+            },
+        },
+    ]
+    return json.dumps(floors, indent=2)
+
+
+def _skills_json() -> str:
+    """Three skill paths (Warrior / Rogue / Mage), three skills each."""
+    skills = [
+        # ── Warrior path ──────────────────────────────────────────────
+        {
+            "id": "warrior_strike",
+            "name": "Power Strike",
+            "path": "Warrior",
+            "tier": 1,
+            "level_req": 5,
+            "description": "Channel raw strength for +20% attack damage.",
+            "effect": {"attack_bonus_pct": 20},
+            "cost_diamonds": 10,
+        },
+        {
+            "id": "warrior_shield",
+            "name": "Iron Guard",
+            "path": "Warrior",
+            "tier": 2,
+            "level_req": 15,
+            "description": "Fortify your stance, reducing all damage taken by 15%.",
+            "effect": {"damage_reduction_pct": 15},
+            "cost_diamonds": 25,
+        },
+        {
+            "id": "warrior_cleave",
+            "name": "Whirlwind Cleave",
+            "path": "Warrior",
+            "tier": 3,
+            "level_req": 30,
+            "description": "Devastating spin attack that deals 3× crit multiplier.",
+            "effect": {"crit_multiplier": 3},
+            "cost_diamonds": 60,
+        },
+        # ── Rogue path ────────────────────────────────────────────────
+        {
+            "id": "rogue_shadow",
+            "name": "Shadow Strike",
+            "path": "Rogue",
+            "tier": 1,
+            "level_req": 5,
+            "description": "Increases crit chance by 10%.",
+            "effect": {"crit_chance_bonus_pct": 10},
+            "cost_diamonds": 10,
+        },
+        {
+            "id": "rogue_poison",
+            "name": "Venom Coat",
+            "path": "Rogue",
+            "tier": 2,
+            "level_req": 15,
+            "description": "Coats weapons in poison for +15% gold per kill.",
+            "effect": {"gold_bonus_pct": 15},
+            "cost_diamonds": 25,
+        },
+        {
+            "id": "rogue_dodge",
+            "name": "Evasion",
+            "path": "Rogue",
+            "tier": 3,
+            "level_req": 30,
+            "description": "20% chance to dodge enemy attacks entirely.",
+            "effect": {"dodge_chance_pct": 20},
+            "cost_diamonds": 60,
+        },
+        # ── Mage path ─────────────────────────────────────────────────
+        {
+            "id": "mage_fireball",
+            "name": "Fireball",
+            "path": "Mage",
+            "tier": 1,
+            "level_req": 5,
+            "description": "Launches a fireball for +25% tap damage.",
+            "effect": {"tap_damage_bonus_pct": 25},
+            "cost_diamonds": 10,
+        },
+        {
+            "id": "mage_barrier",
+            "name": "Arcane Barrier",
+            "path": "Mage",
+            "tier": 2,
+            "level_req": 15,
+            "description": "Magical shield raises max HP by 25%.",
+            "effect": {"max_hp_bonus_pct": 25},
+            "cost_diamonds": 25,
+        },
+        {
+            "id": "mage_haste",
+            "name": "Time Warp",
+            "path": "Mage",
+            "tier": 3,
+            "level_req": 30,
+            "description": "Auto-attack interval halved permanently.",
+            "effect": {"attack_speed_bonus_pct": 50},
+            "cost_diamonds": 60,
+        },
+    ]
+    return json.dumps(skills, indent=2)
+
+
+def _town_map_json() -> str:
+    """Six town buildings with descriptions, taglines, and services."""
+    buildings = [
+        {
+            "name": "Blacksmith",
+            "emoji": "⚒️",
+            "tagline": "Forge & upgrade gear",
+            "description": "Craft powerful weapons and reinforce your armour.",
+            "services": [
+                "Weapon crafting (Gold)",
+                "Armour upgrades (Gold + Diamonds)",
+                "Equipment repairs (free)",
+            ],
+        },
+        {
+            "name": "Tavern",
+            "emoji": "🍺",
+            "tagline": "Rest & hear rumours",
+            "description": "Gather your strength and pick up quest hints from travellers.",
+            "services": [
+                "Full HP restore (50 Gold)",
+                "Quest board refresh",
+                "Rumour mill (lore snippets)",
+            ],
+        },
+        {
+            "name": "Market",
+            "emoji": "🏪",
+            "tagline": "Buy & sell items",
+            "description": "Trade rare items and stock up on consumables.",
+            "services": [
+                "Buy consumables (Gold)",
+                "Sell loot for Gold",
+                "Rare item auctions (Diamonds)",
+            ],
+        },
+        {
+            "name": "Temple",
+            "emoji": "⛪",
+            "tagline": "Blessings & revival",
+            "description": "Receive divine blessings that boost your stats temporarily.",
+            "services": [
+                "Blessing of Strength (+10% ATK, 30 min)",
+                "Blessing of Fortitude (+10% HP, 30 min)",
+                "Resurrection (free once per day)",
+            ],
+        },
+        {
+            "name": "Barracks",
+            "emoji": "🛡️",
+            "tagline": "Train & recruit heroes",
+            "description": "Hire companion heroes and train combat skills.",
+            "services": [
+                "Recruit hero companion (Diamonds)",
+                "Combat training (Gold)",
+                "Hero stat overview",
+            ],
+        },
+        {
+            "name": "Mage Guild",
+            "emoji": "🔮",
+            "tagline": "Learn spells & skills",
+            "description": "The guild offers arcane training and skill unlocking.",
+            "services": [
+                "Unlock Mage skills (Diamonds)",
+                "Spell tome library",
+                "Enchant equipment (Diamonds)",
+            ],
+        },
+    ]
+    return json.dumps(buildings, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# New screen generators
+# ---------------------------------------------------------------------------
+
+
+def _dungeon_screen_dart(title: str) -> str:
+    return f"""\
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Displays dungeon floors loaded from assets/data/dungeon_layers.json.
+/// Floors are wave-gated: a floor unlocks when save_wave >= its min_wave.
+class DungeonScreen extends StatefulWidget {{
+  const DungeonScreen({{super.key}});
+
+  @override
+  State<DungeonScreen> createState() => _DungeonScreenState();
+}}
+
+class _DungeonScreenState extends State<DungeonScreen> {{
+  List<Map<String, dynamic>> _layers = [];
+  bool _loading = true;
+  int _currentWave = 1;
+
+  @override
+  void initState() {{
+    super.initState();
+    _load();
+  }}
+
+  Future<void> _load() async {{
+    final prefs = await SharedPreferences.getInstance();
+    final raw = await rootBundle.loadString('assets/data/dungeon_layers.json');
+    final list = jsonDecode(raw) as List;
+    setState(() {{
+      _layers = list.cast<Map<String, dynamic>>();
+      _currentWave = prefs.getInt('save_wave') ?? 1;
+      _loading = false;
+    }});
+  }}
+
+  bool _isUnlocked(Map<String, dynamic> layer) =>
+      _currentWave >= (layer['min_wave'] as int? ?? 1);
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dungeon Layers'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+      ),
+      backgroundColor: Colors.grey[900],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+          : ListView.builder(
+              itemCount: _layers.length,
+              padding: const EdgeInsets.all(12),
+              itemBuilder: (context, i) {{
+                final layer = _layers[i];
+                final unlocked = _isUnlocked(layer);
+                final boss = layer['boss'] as Map<String, dynamic>?;
+                return Card(
+                  color: unlocked ? Colors.grey[850] : Colors.grey[900],
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: unlocked
+                          ? Colors.amber.withOpacity(0.4)
+                          : Colors.white12,
+                    ),
+                  ),
+                  child: ExpansionTile(
+                    leading: CircleAvatar(
+                      backgroundColor: unlocked ? Colors.amber : Colors.grey,
+                      child: Text(
+                        '${{layer['floor']}}',
+                        style: TextStyle(
+                          color: unlocked ? Colors.black : Colors.white54,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      layer['name'] as String? ?? '',
+                      style: TextStyle(
+                        color: unlocked ? Colors.amber : Colors.white38,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      unlocked
+                          ? (layer['description'] as String? ?? '')
+                          : 'Reach Wave ${{layer['min_wave']}} to unlock',
+                      style: TextStyle(
+                        color: unlocked ? Colors.white54 : Colors.white24,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: unlocked
+                        ? const Icon(Icons.lock_open,
+                            color: Colors.amber, size: 18)
+                        : const Icon(Icons.lock,
+                            color: Colors.white38, size: 18),
+                    children: unlocked
+                        ? [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Divider(color: Colors.white12),
+                                  const Text('Enemies',
+                                      style: TextStyle(
+                                          color: Colors.amber,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: (layer['enemies'] as List? ?? [])
+                                        .map((e) => Chip(
+                                              label: Text(e.toString(),
+                                                  style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.white)),
+                                              backgroundColor: Colors.red[900],
+                                              padding: EdgeInsets.zero,
+                                            ))
+                                        .toList(),
+                                  ),
+                                  if (boss != null) ...[
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.amber.withOpacity(0.08),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: Colors.amber
+                                                .withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '👑 Boss: ${{boss['name']}}',
+                                            style: const TextStyle(
+                                                color: Colors.amber,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13),
+                                          ),
+                                          Text(
+                                            boss['description'] as String? ??
+                                                '',
+                                            style: const TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 12),
+                                          ),
+                                          Text(
+                                            'Reward: ${{boss['gold_reward']}} Gold',
+                                            style: const TextStyle(
+                                                color: Colors.amber,
+                                                fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ]
+                        : [],
+                  ),
+                );
+              }},
+            ),
+    );
+  }}
+}}
+"""
+
+
+def _town_map_screen_dart(title: str) -> str:
+    return f"""\
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+/// Interactive town map loaded from assets/data/town_map.json.
+/// Each building opens a detail sheet listing its services.
+class TownMapScreen extends StatefulWidget {{
+  const TownMapScreen({{super.key}});
+
+  @override
+  State<TownMapScreen> createState() => _TownMapScreenState();
+}}
+
+class _TownMapScreenState extends State<TownMapScreen> {{
+  List<Map<String, dynamic>> _buildings = [];
+  bool _loading = true;
+
+  @override
+  void initState() {{
+    super.initState();
+    _load();
+  }}
+
+  Future<void> _load() async {{
+    final raw = await rootBundle.loadString('assets/data/town_map.json');
+    final list = jsonDecode(raw) as List;
+    setState(() {{
+      _buildings = list.cast<Map<String, dynamic>>();
+      _loading = false;
+    }});
+  }}
+
+  void _showDetail(Map<String, dynamic> building) {{
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {{
+        final services = (building['services'] as List? ?? []);
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(building['emoji'] as String? ?? '🏠',
+                      style: const TextStyle(fontSize: 36)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          building['name'] as String? ?? '',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          building['description'] as String? ?? '',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (services.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('Services',
+                    style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...services.map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline,
+                            color: Colors.greenAccent, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(s.toString(),
+                              style: const TextStyle(
+                                  color: Colors.white70)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      }},
+    );
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Town Map'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+      ),
+      backgroundColor: Colors.grey[900],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+          : GridView.builder(
+              padding: const EdgeInsets.all(16),
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.05,
+              ),
+              itemCount: _buildings.length,
+              itemBuilder: (context, i) {{
+                final b = _buildings[i];
+                return GestureDetector(
+                  onTap: () => _showDetail(b),
+                  child: Card(
+                    color: Colors.grey[850],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(
+                          color: Colors.amber.withOpacity(0.25)),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(b['emoji'] as String? ?? '🏠',
+                            style: const TextStyle(fontSize: 40)),
+                        const SizedBox(height: 8),
+                        Text(
+                          b['name'] as String? ?? '',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            b['tagline'] as String? ?? '',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }},
+            ),
+    );
+  }}
+}}
+"""
+
+
+def _skills_screen_dart(name: str, title: str) -> str:
+    return f"""\
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Skills & Stats screen.
+/// Shows hero base stats and a 3-path skill tree loaded from
+/// assets/data/skills.json.  Skills are unlocked with diamonds.
+class SkillsScreen extends StatefulWidget {{
+  const SkillsScreen({{super.key}});
+
+  @override
+  State<SkillsScreen> createState() => _SkillsScreenState();
+}}
+
+class _SkillsScreenState extends State<SkillsScreen> {{
+  List<Map<String, dynamic>> _skills = [];
+  Set<String> _unlocked = {{}};
+  int _heroLevel = 1;
+  int _diamonds = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {{
+    super.initState();
+    _load();
+  }}
+
+  Future<void> _load() async {{
+    final prefs = await SharedPreferences.getInstance();
+    final raw = await rootBundle.loadString('assets/data/skills.json');
+    final list = jsonDecode(raw) as List;
+    final unlockedList =
+        (prefs.getStringList('unlocked_skills') ?? []).toSet();
+    setState(() {{
+      _skills = list.cast<Map<String, dynamic>>();
+      _unlocked = unlockedList;
+      _heroLevel = prefs.getInt('save_hero_level') ?? 1;
+      _diamonds = prefs.getInt('save_diamonds') ?? 0;
+      _loading = false;
+    }});
+  }}
+
+  Future<void> _unlock(Map<String, dynamic> skill) async {{
+    final cost = skill['cost_diamonds'] as int? ?? 0;
+    if (_diamonds < cost) return;
+    final prefs = await SharedPreferences.getInstance();
+    final id = skill['id'] as String;
+    _unlocked.add(id);
+    _diamonds -= cost;
+    await prefs.setStringList('unlocked_skills', _unlocked.toList());
+    await prefs.setInt('save_diamonds', _diamonds);
+    setState(() {{}});
+  }}
+
+  List<Map<String, dynamic>> _pathSkills(String path) =>
+      _skills.where((s) => s['path'] == path).toList();
+
+  Widget _skillCard(Map<String, dynamic> skill) {{
+    final id = skill['id'] as String;
+    final unlocked = _unlocked.contains(id);
+    final lvlReq = skill['level_req'] as int? ?? 1;
+    final cost = skill['cost_diamonds'] as int? ?? 0;
+    final canAfford = _diamonds >= cost && _heroLevel >= lvlReq;
+    final locked = _heroLevel < lvlReq;
+
+    return Card(
+      color: unlocked
+          ? Colors.green.shade900.withOpacity(0.4)
+          : Colors.grey[850],
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: unlocked
+              ? Colors.greenAccent.withOpacity(0.4)
+              : Colors.white12,
+        ),
+      ),
+      child: ListTile(
+        leading: Icon(
+          unlocked ? Icons.auto_awesome : Icons.lock_outline,
+          color: unlocked ? Colors.greenAccent : Colors.white38,
+        ),
+        title: Text(
+          skill['name'] as String? ?? '',
+          style: TextStyle(
+            color: unlocked ? Colors.greenAccent : Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              skill['description'] as String? ?? '',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              locked
+                  ? 'Requires Hero Lv.$lvlReq'
+                  : unlocked
+                      ? '✓ Unlocked'
+                      : '💎 $cost diamonds',
+              style: TextStyle(
+                color: locked
+                    ? Colors.red[300]
+                    : unlocked
+                        ? Colors.greenAccent
+                        : Colors.lightBlueAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        trailing: unlocked
+            ? const Icon(Icons.check_circle, color: Colors.greenAccent)
+            : ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      canAfford ? Colors.blue[700] : Colors.grey[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  minimumSize: const Size(64, 32),
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                onPressed: (canAfford && !locked) ? () => _unlock(skill) : null,
+                child: const Text('Unlock'),
+              ),
+      ),
+    );
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Skills & Stats'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+      ),
+      backgroundColor: Colors.grey[900],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+          : Column(
+              children: [
+                // ── Stat bar ───────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  color: Colors.grey[850],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _statBadge('Lv.', '$_heroLevel', Colors.amber),
+                      _statBadge('💎', '$_diamonds', Colors.lightBlueAccent),
+                      _statBadge('✓', '${{_unlocked.length}}/${{_skills.length}}',
+                          Colors.greenAccent),
+                    ],
+                  ),
+                ),
+                // ── Tab view per skill path ────────────────────────────
+                Expanded(
+                  child: DefaultTabController(
+                    length: 3,
+                    child: Column(
+                      children: [
+                        const TabBar(
+                          indicatorColor: Colors.amber,
+                          labelColor: Colors.amber,
+                          unselectedLabelColor: Colors.white38,
+                          tabs: [
+                            Tab(text: '⚔ Warrior'),
+                            Tab(text: '🗡 Rogue'),
+                            Tab(text: '🔮 Mage'),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: ['Warrior', 'Rogue', 'Mage']
+                                .map(
+                                  (path) => ListView(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 8),
+                                    children: _pathSkills(path)
+                                        .map(_skillCard)
+                                        .toList(),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }}
+
+  Widget _statBadge(String label, String value, Color color) {{
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value,
+            style: TextStyle(
+                color: color, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(color: Colors.white38, fontSize: 11)),
+      ],
+    );
+  }}
+}}
+"""
+
+
+def _store_screen_dart(title: str) -> str:
+    return f"""\
+import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Diamond store: buy diamond bundles with real money (in_app_purchase).
+/// Uses Google Play / App Store product IDs defined in _kProductIds.
+/// Replace the test product IDs before publishing.
+class StoreScreen extends StatefulWidget {{
+  const StoreScreen({{super.key}});
+
+  @override
+  State<StoreScreen> createState() => _StoreScreenState();
+}}
+
+// Product IDs must match exactly what you define in the store consoles.
+const Set<String> _kProductIds = {{
+  'diamonds_50',
+  'diamonds_150',
+  'diamonds_500',
+  'diamonds_1200',
+}};
+
+const Map<String, int> _kDiamondAmounts = {{
+  'diamonds_50':   50,
+  'diamonds_150':  150,
+  'diamonds_500':  500,
+  'diamonds_1200': 1200,
+}};
+
+const Map<String, String> _kFallbackPrices = {{
+  'diamonds_50':   '\u00240.99',
+  'diamonds_150':  '\u00242.99',
+  'diamonds_500':  '\u00247.99',
+  'diamonds_1200': '\u002417.99',
+}};
+
+class _StoreScreenState extends State<StoreScreen> {{
+  final InAppPurchase _iap = InAppPurchase.instance;
+  List<ProductDetails> _products = [];
+  bool _available = false;
+  bool _loading = true;
+  int _diamonds = 0;
+
+  @override
+  void initState() {{
+    super.initState();
+    _initStore();
+  }}
+
+  Future<void> _initStore() async {{
+    final prefs = await SharedPreferences.getInstance();
+    _diamonds = prefs.getInt('save_diamonds') ?? 0;
+    _available = await _iap.isAvailable();
+    if (_available) {{
+      final response = await _iap.queryProductDetails(_kProductIds);
+      _products = response.productDetails;
+      // Sort by diamond amount ascending
+      _products.sort((a, b) =>
+          (_kDiamondAmounts[a.id] ?? 0)
+              .compareTo(_kDiamondAmounts[b.id] ?? 0));
+      _iap.purchaseStream.listen(_handlePurchase);
+    }}
+    setState(() => _loading = false);
+  }}
+
+  void _handlePurchase(List<PurchaseDetails> details) async {{
+    for (final purchase in details) {{
+      if (purchase.status == PurchaseStatus.purchased ||
+          purchase.status == PurchaseStatus.restored) {{
+        final amount = _kDiamondAmounts[purchase.productID] ?? 0;
+        final prefs = await SharedPreferences.getInstance();
+        final current = prefs.getInt('save_diamonds') ?? 0;
+        await prefs.setInt('save_diamonds', current + amount);
+        setState(() => _diamonds = current + amount);
+      }}
+      if (purchase.pendingCompletePurchase) {{
+        await _iap.completePurchase(purchase);
+      }}
+    }}
+  }}
+
+  void _buy(ProductDetails product) {{
+    final param = PurchaseParam(productDetails: product);
+    _iap.buyConsumable(purchaseParam: param);
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Diamond Store'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.diamond, color: Colors.lightBlueAccent,
+                    size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  '$_diamonds',
+                  style: const TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: Colors.grey[900],
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.amber))
+          : Column(
+              children: [
+                // Current balance banner
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 12, horizontal: 20),
+                  color: const Color(0xFF0d1b2a),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.diamond,
+                          color: Colors.lightBlueAccent, size: 28),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Your Diamonds',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                          Text(
+                            '$_diamonds',
+                            style: const TextStyle(
+                                color: Colors.lightBlueAccent,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Text('Buy Diamonds',
+                      style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                ),
+                Expanded(
+                  child: !_available
+                      ? const Center(
+                          child: Text(
+                            'Store unavailable.\nConfigure product IDs in the Play Console / App Store Connect.',
+                            style: TextStyle(
+                                color: Colors.white54, fontSize: 13),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : _products.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No products found.\nEnsure product IDs match the store console.',
+                                style: TextStyle(
+                                    color: Colors.white54, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(12),
+                              itemCount: _products.length,
+                              itemBuilder: (context, i) {{
+                                final p = _products[i];
+                                final amount =
+                                    _kDiamondAmounts[p.id] ?? 0;
+                                return Card(
+                                  color: Colors.grey[850],
+                                  margin:
+                                      const EdgeInsets.only(bottom: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: BorderSide(
+                                        color: Colors.lightBlueAccent
+                                            .withOpacity(0.3)),
+                                  ),
+                                  child: ListTile(
+                                    leading: const Icon(Icons.diamond,
+                                        color: Colors.lightBlueAccent,
+                                        size: 32),
+                                    title: Text(
+                                      '$amount 💎',
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    subtitle: Text(
+                                      p.description,
+                                      style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12),
+                                    ),
+                                    trailing: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            Colors.lightBlueAccent,
+                                        foregroundColor: Colors.black,
+                                        textStyle: const TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                      onPressed: () => _buy(p),
+                                      child: Text(p.price),
+                                    ),
+                                  ),
+                                );
+                              }},
+                            ),
+                ),
+              ],
+            ),
+    );
+  }}
+}}
+"""
+
+
+def _ad_service_dart() -> str:
+    return """\
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+/// Wraps Google Mobile Ads rewarded ad loading and display.
+///
+/// Uses the standard Google test ad unit IDs.
+/// IMPORTANT: Replace _rewardedAdUnitId with your production ad unit ID
+/// before publishing to the Play Store / App Store.
+class AdService {
+  // Test rewarded ad unit ID – replace before publishing.
+  // Android: ca-app-pub-3940256099942544/5224354917
+  // iOS:     ca-app-pub-3940256099942544/1712485313
+  static const String _rewardedAdUnitId =
+      'ca-app-pub-3940256099942544/5224354917';
+
+  RewardedAd? _rewardedAd;
+  bool _isAdLoaded = false;
+
+  Future<void> initialize() async {
+    await MobileAds.instance.initialize();
+    _loadAd();
+  }
+
+  bool get isAdReady => _isAdLoaded && _rewardedAd != null;
+
+  void _loadAd() {
+    RewardedAd.load(
+      adUnitId: _rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _rewardedAd = ad;
+          _isAdLoaded = true;
+        },
+        onAdFailedToLoad: (error) {
+          _isAdLoaded = false;
+          _rewardedAd = null;
+        },
+      ),
+    );
+  }
+
+  /// Show a rewarded ad.
+  ///
+  /// [onRewarded] is called with the reward amount when the user earns it.
+  /// [onDismissed] is called when the ad is closed (reward granted or not).
+  void showRewardedAd({
+    required void Function(int goldBonus) onRewarded,
+    VoidCallback? onDismissed,
+  }) {
+    if (!isAdReady) return;
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _isAdLoaded = false;
+        _rewardedAd = null;
+        onDismissed?.call();
+        _loadAd(); // pre-load next ad
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _isAdLoaded = false;
+        _rewardedAd = null;
+        _loadAd();
+      },
+    );
+    _rewardedAd!.show(
+      onUserEarnedReward: (ad, reward) {
+        onRewarded(reward.amount.toInt());
+      },
+    );
   }
 }
 """

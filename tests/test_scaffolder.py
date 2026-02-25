@@ -345,5 +345,261 @@ class TestMobileReadiness(unittest.TestCase):
         self.assertIn("flutter_lints:", self.files["pubspec.yaml"])
 
 
+# ---------------------------------------------------------------------------
+# Full idle RPG mobile expansion tests
+# ---------------------------------------------------------------------------
+
+class TestIdleRPGExpansion(unittest.TestCase):
+    """Tests for dungeon layers, town map, skills, diamonds, IAP, and video ads."""
+
+    def setUp(self):
+        self.files = scaffold_project(_idle_spec())
+
+    # ── New data files ────────────────────────────────────────────────────────
+
+    def test_dungeon_layers_json_exists(self):
+        self.assertIn("assets/data/dungeon_layers.json", self.files)
+
+    def test_dungeon_layers_has_five_floors(self):
+        import json
+        data = json.loads(self.files["assets/data/dungeon_layers.json"])
+        self.assertEqual(len(data), 5)
+
+    def test_dungeon_layers_each_has_boss(self):
+        import json
+        data = json.loads(self.files["assets/data/dungeon_layers.json"])
+        for floor in data:
+            self.assertIn("boss", floor, f"Floor {floor.get('floor')} missing boss")
+
+    def test_dungeon_layers_wave_gated(self):
+        import json
+        data = json.loads(self.files["assets/data/dungeon_layers.json"])
+        self.assertTrue(all("min_wave" in f for f in data))
+        # Floor 1 is unlocked from wave 1
+        self.assertEqual(data[0]["min_wave"], 1)
+
+    def test_skills_json_exists(self):
+        self.assertIn("assets/data/skills.json", self.files)
+
+    def test_skills_json_has_three_paths(self):
+        import json
+        data = json.loads(self.files["assets/data/skills.json"])
+        paths = {s["path"] for s in data}
+        self.assertEqual(paths, {"Warrior", "Rogue", "Mage"})
+
+    def test_skills_json_each_has_diamond_cost(self):
+        import json
+        data = json.loads(self.files["assets/data/skills.json"])
+        for skill in data:
+            self.assertIn("cost_diamonds", skill)
+            self.assertGreater(skill["cost_diamonds"], 0)
+
+    def test_town_map_json_exists(self):
+        self.assertIn("assets/data/town_map.json", self.files)
+
+    def test_town_map_has_six_buildings(self):
+        import json
+        data = json.loads(self.files["assets/data/town_map.json"])
+        self.assertEqual(len(data), 6)
+
+    def test_town_map_buildings_have_services(self):
+        import json
+        data = json.loads(self.files["assets/data/town_map.json"])
+        for b in data:
+            self.assertIn("services", b)
+            self.assertGreater(len(b["services"]), 0)
+
+    # ── New screens ───────────────────────────────────────────────────────────
+
+    def test_dungeon_screen_exists(self):
+        self.assertIn("lib/screens/dungeon_screen.dart", self.files)
+
+    def test_dungeon_screen_loads_dungeon_layers_json(self):
+        content = self.files["lib/screens/dungeon_screen.dart"]
+        self.assertIn("dungeon_layers.json", content)
+
+    def test_dungeon_screen_uses_shared_preferences_for_wave(self):
+        content = self.files["lib/screens/dungeon_screen.dart"]
+        self.assertIn("save_wave", content)
+
+    def test_dungeon_screen_shows_lock_icon_for_gated_floors(self):
+        content = self.files["lib/screens/dungeon_screen.dart"]
+        self.assertIn("lock", content.lower())
+
+    def test_town_map_screen_exists(self):
+        self.assertIn("lib/screens/town_map_screen.dart", self.files)
+
+    def test_town_map_screen_loads_town_map_json(self):
+        content = self.files["lib/screens/town_map_screen.dart"]
+        self.assertIn("town_map.json", content)
+
+    def test_town_map_screen_uses_grid(self):
+        content = self.files["lib/screens/town_map_screen.dart"]
+        self.assertIn("GridView", content)
+
+    def test_town_map_screen_has_bottom_sheet_detail(self):
+        content = self.files["lib/screens/town_map_screen.dart"]
+        self.assertIn("showModalBottomSheet", content)
+
+    def test_skills_screen_exists(self):
+        self.assertIn("lib/screens/skills_screen.dart", self.files)
+
+    def test_skills_screen_loads_skills_json(self):
+        content = self.files["lib/screens/skills_screen.dart"]
+        self.assertIn("skills.json", content)
+
+    def test_skills_screen_has_three_tabs(self):
+        content = self.files["lib/screens/skills_screen.dart"]
+        self.assertIn("Warrior", content)
+        self.assertIn("Rogue", content)
+        self.assertIn("Mage", content)
+
+    def test_skills_screen_reads_diamonds_from_prefs(self):
+        content = self.files["lib/screens/skills_screen.dart"]
+        self.assertIn("save_diamonds", content)
+
+    def test_store_screen_exists(self):
+        self.assertIn("lib/screens/store_screen.dart", self.files)
+
+    def test_store_screen_uses_in_app_purchase(self):
+        content = self.files["lib/screens/store_screen.dart"]
+        self.assertIn("InAppPurchase", content)
+
+    def test_store_screen_has_product_ids(self):
+        content = self.files["lib/screens/store_screen.dart"]
+        self.assertIn("diamonds_50", content)
+        self.assertIn("diamonds_1200", content)
+
+    def test_store_screen_handles_purchase_status(self):
+        content = self.files["lib/screens/store_screen.dart"]
+        self.assertIn("PurchaseStatus.purchased", content)
+
+    # ── Ad service ────────────────────────────────────────────────────────────
+
+    def test_ad_service_exists(self):
+        self.assertIn("lib/services/ad_service.dart", self.files)
+
+    def test_ad_service_uses_google_mobile_ads(self):
+        content = self.files["lib/services/ad_service.dart"]
+        self.assertIn("google_mobile_ads", content)
+
+    def test_ad_service_has_rewarded_ad(self):
+        content = self.files["lib/services/ad_service.dart"]
+        self.assertIn("RewardedAd", content)
+
+    def test_ad_service_uses_test_id(self):
+        content = self.files["lib/services/ad_service.dart"]
+        self.assertIn("3940256099942544", content)
+
+    def test_ad_service_preloads_next_ad(self):
+        """After showing an ad it should reload the next one."""
+        content = self.files["lib/services/ad_service.dart"]
+        self.assertIn("_loadAd()", content)
+
+    # ── Diamonds currency ─────────────────────────────────────────────────────
+
+    def test_game_dart_has_diamonds_field(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("int diamonds = 0;", content)
+
+    def test_game_dart_has_dungeon_layer_field(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("int currentDungeonLayer = 1;", content)
+
+    def test_game_dart_imports_ad_service(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("ad_service.dart", content)
+
+    def test_game_dart_has_earn_diamonds_method(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("earnDiamonds", content)
+
+    def test_game_dart_has_watch_ad_for_gold_method(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("watchAdForGold", content)
+
+    def test_game_dart_awards_diamonds_for_boss(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("diamonds += 5", content)
+
+    def test_save_manager_has_diamonds(self):
+        content = self.files["lib/game/save_manager.dart"]
+        self.assertIn("int diamonds = 0;", content)
+
+    def test_save_manager_has_dungeon_layer(self):
+        content = self.files["lib/game/save_manager.dart"]
+        self.assertIn("currentDungeonLayer", content)
+
+    def test_save_manager_persists_diamonds(self):
+        content = self.files["lib/game/save_manager.dart"]
+        self.assertIn("save_diamonds", content)
+
+    def test_hud_shows_diamonds(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("g.diamonds", content)
+
+    # ── Game over overlay – Watch Ad button ────────────────────────────────────
+
+    def test_game_over_is_stateful_widget(self):
+        content = self.files["lib/game/game_over_overlay.dart"]
+        self.assertIn("StatefulWidget", content)
+
+    def test_game_over_has_watch_ad_button(self):
+        content = self.files["lib/game/game_over_overlay.dart"]
+        self.assertIn("Watch Ad", content)
+
+    def test_game_over_calls_watch_ad_for_gold(self):
+        content = self.files["lib/game/game_over_overlay.dart"]
+        self.assertIn("watchAdForGold", content)
+
+    def test_game_over_shows_diamonds_balance(self):
+        content = self.files["lib/game/game_over_overlay.dart"]
+        self.assertIn("game.diamonds", content)
+
+    # ── Navigation ────────────────────────────────────────────────────────────
+
+    def test_main_dart_has_eight_nav_items(self):
+        main = self.files["lib/main.dart"]
+        count = main.count("BottomNavigationBarItem")
+        self.assertEqual(count, 8)
+
+    def test_main_dart_imports_new_screens(self):
+        main = self.files["lib/main.dart"]
+        self.assertIn("dungeon_screen.dart", main)
+        self.assertIn("town_map_screen.dart", main)
+        self.assertIn("skills_screen.dart", main)
+        self.assertIn("store_screen.dart", main)
+
+    def test_main_dart_initializes_mobile_ads(self):
+        main = self.files["lib/main.dart"]
+        self.assertIn("MobileAds.instance.initialize", main)
+
+    def test_main_dart_imports_google_mobile_ads(self):
+        main = self.files["lib/main.dart"]
+        self.assertIn("google_mobile_ads", main)
+
+    # ── pubspec – new deps ─────────────────────────────────────────────────────
+
+    def test_pubspec_has_in_app_purchase(self):
+        self.assertIn("in_app_purchase", self.files["pubspec.yaml"])
+
+    def test_pubspec_has_google_mobile_ads(self):
+        self.assertIn("google_mobile_ads", self.files["pubspec.yaml"])
+
+    # ── Android manifest ──────────────────────────────────────────────────────
+
+    def test_android_manifest_has_internet_permission(self):
+        manifest = self.files["android/app/src/main/AndroidManifest.xml"]
+        self.assertIn("android.permission.INTERNET", manifest)
+
+    def test_android_manifest_has_billing_permission(self):
+        manifest = self.files["android/app/src/main/AndroidManifest.xml"]
+        self.assertIn("com.android.vending.BILLING", manifest)
+
+    def test_android_manifest_has_admob_app_id(self):
+        manifest = self.files["android/app/src/main/AndroidManifest.xml"]
+        self.assertIn("APPLICATION_ID", manifest)
+
+
 if __name__ == "__main__":
     unittest.main()

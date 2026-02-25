@@ -218,19 +218,19 @@ class TestIdleRPGCodegenFiles(unittest.TestCase):
         self.assertIn("CatchUp", dart)
 
     # Main nav includes all screens
-    def test_main_dart_has_combat_screen(self):
+    def test_main_dart_has_dungeon_screen(self):
         main = self.files["lib/main.dart"]
-        self.assertIn("CombatScreen", main)
+        self.assertIn("DungeonScreen", main)
 
     def test_main_dart_has_settings_screen(self):
         main = self.files["lib/main.dart"]
         self.assertIn("SettingsScreen", main)
 
-    def test_main_dart_has_six_nav_items(self):
+    def test_main_dart_has_eight_nav_items(self):
         main = self.files["lib/main.dart"]
         # Count BottomNavigationBarItem occurrences
         count = main.count("BottomNavigationBarItem")
-        self.assertEqual(count, 6)
+        self.assertEqual(count, 8)
 
     # pubspec.yaml includes shared_preferences
     def test_pubspec_has_shared_preferences(self):
