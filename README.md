@@ -2,6 +2,42 @@
 
 A collection of game generation tools and AI-assisted design utilities.
 
+## Installation
+
+```bash
+# Minimal install (no optional deps)
+pip install -e .
+
+# With Ollama / HTTP API support (installs requests)
+pip install -e ".[ollama]"
+
+# With local image generation via 🤗 diffusers
+pip install -e ".[image]"
+
+# Install everything (all optional features)
+pip install -e ".[all]"
+
+# Developer install (pytest, ruff, black)
+pip install -e ".[dev]"
+```
+
+## Entry Points
+
+After installation, the following CLI commands are available:
+
+| Command | Description |
+|---------|-------------|
+| `gamegen` | Flutter/Flame game generator (main entry point) |
+| `gamedesign-agent` | AI Game Design Assistant |
+
+```bash
+# Generate a game project
+gamegen --prompt "top down space shooter" --out game.zip
+
+# Launch the AI Design Assistant
+gamedesign-agent
+```
+
 ## Features
 
 ### Feature 4 – AI Design Assistant
@@ -18,6 +54,8 @@ A free, open-source AI Game Design Assistant. No paid API keys required.
 # Quick start (fully offline)
 pip install -e .
 python -m gamedesign_agent
+# or use the installed entry point:
+gamedesign-agent
 ```
 
 For full documentation see [docs/AI_DESIGN_ASSISTANT.md](docs/AI_DESIGN_ASSISTANT.md).

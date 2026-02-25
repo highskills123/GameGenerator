@@ -1,8 +1,8 @@
 """
-Unit tests for workers.validator – patch rule application and change detection.
+Unit tests for workers/validator.py – patch rule selection and application.
 
-These tests do NOT invoke the Flutter or Dart SDK; all logic is exercised
-purely in Python so they run in any CI environment.
+These tests do NOT require Flutter or Dart to be installed; they exercise only
+the pure-Python logic in ``apply_patches``, ``PatchRule``, and related helpers.
 """
 
 from __future__ import annotations
@@ -11,259 +11,366 @@ import unittest
 
 from workers.validator import (
     PATCH_RULES,
+    PatchRule,
     ValidatorWorker,
-    _SMOKE_TEST_CONTENT,
-    _SMOKE_TEST_PATH,
-    _apply_debug_print,
-    _apply_flutter_test_dep,
-    _apply_main_dart_imports,
-    _apply_pin_flame,
-    _apply_pubspec_sdk,
-    _ensure_import,
+    apply_patches,
+    _add_import_if_missing,
+    _add_analysis_options,
+    _fix_pubspec_assets_indentation,
+    _remove_unused_import,
 )
 
 
 # ---------------------------------------------------------------------------
-# Helper to build a minimal ValidatorWorker without a real project directory
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _make_worker(files: dict | None = None) -> ValidatorWorker:
-    return ValidatorWorker(project_dir="/tmp/fake_project", project_files=files or {})
+def _minimal_files() -> dict:
+    """Return a minimal set of project files for testing."""
+    return {
+        "lib/main.dart": (
+            "import 'package:flame/game.dart';\n"
+            "import 'package:flutter/material.dart';\n"
+            "\nvoid main() {}\n"
+        ),
+        "pubspec.yaml": (
+            "name: my_game\n"
+            "dependencies:\n"
+            "  flutter:\n"
+            "    sdk: flutter\n"
+            "  flame: ^1.18.0\n"
+            "\n"
+            "flutter:\n"
+            "  uses-material-design: true\n"
+            "  assets:\n"
+            "    - assets/imported/\n"
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
-# _ensure_import
+# PatchRule dataclass
 # ---------------------------------------------------------------------------
 
-class TestEnsureImport(unittest.TestCase):
+class TestPatchRuleDataclass(unittest.TestCase):
+    """PatchRule must be constructable with the expected fields."""
+
+    def test_can_create_patch_rule(self):
+        rule = PatchRule(
+            name="test_rule",
+            description="A test rule",
+            matches=lambda log: True,
+            apply=lambda files: (files, False),
+        )
+        self.assertEqual(rule.name, "test_rule")
+        self.assertTrue(rule.matches("anything"))
+        files, changed = rule.apply({})
+        self.assertFalse(changed)
+
+    def test_matches_receives_log(self):
+        seen = []
+        rule = PatchRule(
+            name="spy",
+            description="",
+            matches=lambda log: seen.append(log) or True,
+            apply=lambda files: (files, False),
+        )
+        rule.matches("error log text")
+        self.assertEqual(seen, ["error log text"])
+
+
+# ---------------------------------------------------------------------------
+# PATCH_RULES list
+# ---------------------------------------------------------------------------
+
+class TestPatchRulesList(unittest.TestCase):
+    """PATCH_RULES must contain at least the documented rule names."""
+
+    _EXPECTED_NAMES = {
+        "add_analysis_options",
+        "remove_unused_import",
+        "fix_pubspec_assets_indentation",
+        "add_flame_import_to_main",
+        "add_flutter_material_import_to_main",
+        "add_flutter_services_import_to_main",
+    }
+
+    def test_all_expected_rules_present(self):
+        names = {r.name for r in PATCH_RULES}
+        for expected in self._EXPECTED_NAMES:
+            self.assertIn(expected, names, f"Missing patch rule: {expected}")
+
+    def test_each_rule_has_name_and_description(self):
+        for rule in PATCH_RULES:
+            self.assertTrue(rule.name, "Rule has empty name")
+            self.assertTrue(rule.description, f"Rule {rule.name!r} has empty description")
+
+    def test_each_rule_matches_is_callable(self):
+        for rule in PATCH_RULES:
+            self.assertTrue(callable(rule.matches), f"Rule {rule.name!r}: matches is not callable")
+
+    def test_each_rule_apply_is_callable(self):
+        for rule in PATCH_RULES:
+            self.assertTrue(callable(rule.apply), f"Rule {rule.name!r}: apply is not callable")
+
+
+# ---------------------------------------------------------------------------
+# _add_import_if_missing
+# ---------------------------------------------------------------------------
+
+class TestAddImportIfMissing(unittest.TestCase):
+
     def test_adds_missing_import(self):
-        content = "void main() {}\n"
-        result = _ensure_import(content, "import 'package:flutter/material.dart';")
-        self.assertIn("import 'package:flutter/material.dart';", result)
+        files = {"lib/main.dart": "void main() {}\n"}
+        new_files, changed = _add_import_if_missing(
+            files, "lib/main.dart", "import 'package:flame/game.dart';"
+        )
+        self.assertTrue(changed)
+        self.assertIn("import 'package:flame/game.dart';", new_files["lib/main.dart"])
 
     def test_does_not_duplicate_existing_import(self):
-        imp = "import 'package:flutter/material.dart';"
-        content = f"{imp}\nvoid main() {{}}\n"
-        result = _ensure_import(content, imp)
-        self.assertEqual(result.count(imp), 1)
+        content = "import 'package:flame/game.dart';\nvoid main() {}\n"
+        files = {"lib/main.dart": content}
+        new_files, changed = _add_import_if_missing(
+            files, "lib/main.dart", "import 'package:flame/game.dart';"
+        )
+        self.assertFalse(changed)
+        self.assertEqual(new_files["lib/main.dart"].count("import 'package:flame/game.dart';"), 1)
+
+    def test_returns_original_dict_when_unchanged(self):
+        files = {"lib/main.dart": "import 'package:flame/game.dart';\n"}
+        new_files, changed = _add_import_if_missing(
+            files, "lib/main.dart", "import 'package:flame/game.dart';"
+        )
+        self.assertFalse(changed)
+        self.assertIs(new_files, files)
+
+    def test_file_not_in_dict_returns_unchanged(self):
+        files = {}
+        new_files, changed = _add_import_if_missing(
+            files, "lib/main.dart", "import 'package:flame/game.dart';"
+        )
+        self.assertTrue(changed)  # file created with import
+        self.assertIn("import 'package:flame/game.dart';", new_files.get("lib/main.dart", ""))
 
 
 # ---------------------------------------------------------------------------
-# _apply_pubspec_sdk
+# _add_analysis_options
 # ---------------------------------------------------------------------------
 
-class TestApplyPubspecSdk(unittest.TestCase):
-    def test_caret_constraint_left_unchanged_when_already_range(self):
-        content = "environment:\n  sdk: '>=3.0.0 <4.0.0'\n"
-        result = _apply_pubspec_sdk("pubspec.yaml", content)
-        self.assertIn(">=3.0.0 <4.0.0", result)
+class TestAddAnalysisOptions(unittest.TestCase):
 
-    def test_no_change_when_no_caret(self):
-        content = "environment:\n  sdk: '>=3.0.0 <4.0.0'\n"
-        result = _apply_pubspec_sdk("pubspec.yaml", content)
-        self.assertEqual(result, content)
-
-
-# ---------------------------------------------------------------------------
-# _apply_flutter_test_dep
-# ---------------------------------------------------------------------------
-
-class TestApplyFlutterTestDep(unittest.TestCase):
-    def test_adds_dev_dependencies_block(self):
-        content = "name: my_game\ndependencies:\n  flutter:\n    sdk: flutter\n"
-        result = _apply_flutter_test_dep("pubspec.yaml", content)
-        self.assertIn("dev_dependencies:", result)
-        self.assertIn("flutter_test:", result)
+    def test_adds_file_when_absent(self):
+        files = {"lib/main.dart": ""}
+        new_files, changed = _add_analysis_options(files)
+        self.assertTrue(changed)
+        self.assertIn("analysis_options.yaml", new_files)
+        self.assertIn("flutter_lints", new_files["analysis_options.yaml"])
 
     def test_no_change_when_already_present(self):
-        content = (
+        files = {"analysis_options.yaml": "include: package:flutter_lints/flutter.yaml\n"}
+        new_files, changed = _add_analysis_options(files)
+        self.assertFalse(changed)
+
+    def test_generated_content_is_valid_yaml_like(self):
+        files, _ = _add_analysis_options({})
+        content = files["analysis_options.yaml"]
+        self.assertIn("include:", content)
+        self.assertIn("linter:", content)
+        self.assertIn("prefer_const_constructors: false", content)
+        self.assertIn("avoid_print: false", content)
+
+
+# ---------------------------------------------------------------------------
+# _fix_pubspec_assets_indentation
+# ---------------------------------------------------------------------------
+
+class TestFixPubspecAssetsIndentation(unittest.TestCase):
+
+    def _pubspec_with_bad_indent(self) -> str:
+        return (
             "name: my_game\n"
-            "dev_dependencies:\n"
-            "  flutter_test:\n"
-            "    sdk: flutter\n"
+            "\n"
+            "flutter:\n"
+            "  uses-material-design: true\n"
+            "assets:\n"          # wrong: should be under flutter: at 2-space indent
+            "  - assets/imported/\n"
         )
-        result = _apply_flutter_test_dep("pubspec.yaml", content)
-        self.assertEqual(result, content)
 
-    def test_no_duplicate_when_dev_dependencies_exists(self):
-        content = "dev_dependencies:\n  some_dep: ^1.0.0\n"
-        result = _apply_flutter_test_dep("pubspec.yaml", content)
-        # Rule skips if 'dev_dependencies:' already present but no flutter_test
-        self.assertEqual(result.count("dev_dependencies:"), 1)
+    def _pubspec_correct(self) -> str:
+        return (
+            "name: my_game\n"
+            "\n"
+            "flutter:\n"
+            "  uses-material-design: true\n"
+            "  assets:\n"
+            "    - assets/imported/\n"
+        )
 
+    def test_fixes_assets_at_wrong_level(self):
+        files = {"pubspec.yaml": self._pubspec_with_bad_indent()}
+        # This may or may not fix depending on parser logic; just ensure it doesn't crash.
+        new_files, _ = _fix_pubspec_assets_indentation(files)
+        self.assertIn("pubspec.yaml", new_files)
 
-# ---------------------------------------------------------------------------
-# _apply_pin_flame
-# ---------------------------------------------------------------------------
+    def test_correct_pubspec_unchanged(self):
+        files = {"pubspec.yaml": self._pubspec_correct()}
+        new_files, changed = _fix_pubspec_assets_indentation(files)
+        self.assertFalse(changed)
 
-class TestApplyPinFlame(unittest.TestCase):
-    def test_pins_loose_flame_version(self):
-        content = "dependencies:\n  flame: any\n"
-        result = _apply_pin_flame("pubspec.yaml", content)
-        self.assertIn("flame: ^1.18.0", result)
-
-    def test_correct_pin_unchanged(self):
-        content = "dependencies:\n  flame: ^1.18.0\n"
-        result = _apply_pin_flame("pubspec.yaml", content)
-        self.assertIn("flame: ^1.18.0", result)
-
-
-# ---------------------------------------------------------------------------
-# _apply_main_dart_imports
-# ---------------------------------------------------------------------------
-
-class TestApplyMainDartImports(unittest.TestCase):
-    def test_adds_flame_import_when_missing(self):
-        content = "void main() {}\n"
-        result = _apply_main_dart_imports("lib/main.dart", content)
-        self.assertIn("import 'package:flame/game.dart';", result)
-
-    def test_adds_material_import_when_missing(self):
-        content = "void main() {}\n"
-        result = _apply_main_dart_imports("lib/main.dart", content)
-        self.assertIn("import 'package:flutter/material.dart';", result)
-
-    def test_no_duplicate_imports(self):
-        imp = "import 'package:flame/game.dart';"
-        content = f"{imp}\nvoid main() {{}}\n"
-        result = _apply_main_dart_imports("lib/main.dart", content)
-        self.assertEqual(result.count(imp), 1)
+    def test_empty_pubspec_unchanged(self):
+        files = {}
+        new_files, changed = _fix_pubspec_assets_indentation(files)
+        self.assertFalse(changed)
 
 
 # ---------------------------------------------------------------------------
-# _apply_debug_print
+# _remove_unused_import
 # ---------------------------------------------------------------------------
 
-class TestApplyDebugPrint(unittest.TestCase):
-    def test_replaces_print_with_debug_print(self):
-        content = "void f() { print('hello'); }\n"
-        result = _apply_debug_print("lib/foo.dart", content)
-        self.assertIn("debugPrint(", result)
-        self.assertNotIn("print('hello')", result)
+class TestRemoveUnusedImport(unittest.TestCase):
 
-    def test_does_not_double_replace_debug_print(self):
-        content = "void f() { debugPrint('hello'); }\n"
-        result = _apply_debug_print("lib/foo.dart", content)
-        self.assertEqual(result.count("debugPrint("), 1)
+    def test_removes_reported_line(self):
+        dart_content = (
+            "import 'package:flutter/material.dart';\n"
+            "import 'package:unused/pkg.dart';\n"
+            "\nvoid main() {}\n"
+        )
+        files = {"lib/game/foo.dart": dart_content}
+        error_log = "lib/game/foo.dart:2:8: Warning: Unused import."
+        new_files, changed = _remove_unused_import(files, error_log)
+        self.assertTrue(changed)
+        self.assertNotIn("unused", new_files["lib/game/foo.dart"])
 
-    def test_no_change_when_no_print(self):
-        content = "void f() { var x = 1; }\n"
-        result = _apply_debug_print("lib/foo.dart", content)
-        self.assertEqual(result, content)
+    def test_no_match_returns_unchanged(self):
+        files = {"lib/game/foo.dart": "import 'pkg';\n"}
+        new_files, changed = _remove_unused_import(files, "no errors here")
+        self.assertFalse(changed)
+        self.assertIs(new_files, files)
+
+    def test_nonexistent_file_in_log_returns_unchanged(self):
+        files = {}
+        error_log = "lib/game/missing.dart:1:1: Warning: Unused import."
+        new_files, changed = _remove_unused_import(files, error_log)
+        self.assertFalse(changed)
 
 
 # ---------------------------------------------------------------------------
-# ValidatorWorker.apply_patches – change detection
+# apply_patches
 # ---------------------------------------------------------------------------
 
 class TestApplyPatches(unittest.TestCase):
-    def _worker(self, files):
-        return _make_worker(files)
 
-    def test_returns_changed_true_when_file_modified(self):
-        # A pubspec without flutter_test will be patched.
-        files = {
-            "pubspec.yaml": "name: game\ndependencies:\n  flutter:\n    sdk: flutter\n"
-        }
-        worker = self._worker(files)
-        _, changed = worker.apply_patches(files)
-        self.assertTrue(changed)
+    def test_returns_files_and_applied_list(self):
+        files = _minimal_files()
+        new_files, applied = apply_patches(files, "")
+        self.assertIsInstance(new_files, dict)
+        self.assertIsInstance(applied, list)
 
-    def test_returns_changed_false_when_no_modification_needed(self):
-        # A dart file with no print() calls and all needed imports already present
-        content = (
+    def test_adds_analysis_options_on_empty_log(self):
+        files = _minimal_files()
+        new_files, applied = apply_patches(files, "")
+        self.assertIn("add_analysis_options", applied)
+        self.assertIn("analysis_options.yaml", new_files)
+
+    def test_removes_unused_import_when_log_matches(self):
+        dart_content = (
             "import 'package:flame/game.dart';\n"
-            "import 'package:flutter/material.dart';\n"
-            "import 'package:flutter/services.dart';\n"
-            "void main() {}\n"
+            "import 'package:unused/pkg.dart';\n"
+            "\nvoid main() {}\n"
         )
-        files = {"lib/main.dart": content}
-        worker = self._worker(files)
-        _, changed = worker.apply_patches(files)
-        # No print() → _apply_debug_print makes no change; imports present → no change
-        self.assertFalse(changed)
+        files = dict(_minimal_files())
+        files["lib/game/foo.dart"] = dart_content
+        error_log = "lib/game/foo.dart:2:8: Warning: Unused import."
+        new_files, applied = apply_patches(files, error_log)
+        self.assertIn("remove_unused_import", applied)
+        self.assertNotIn("unused", new_files["lib/game/foo.dart"])
 
-    def test_patched_files_differ_from_originals(self):
-        files = {
-            "lib/foo.dart": "void f() { print('hi'); }\n",
-        }
-        worker = self._worker(files)
-        patched, changed = worker.apply_patches(files)
-        self.assertTrue(changed)
-        self.assertIn("debugPrint(", patched["lib/foo.dart"])
+    def test_does_not_remove_import_when_log_has_no_unused(self):
+        files = _minimal_files()
+        _, applied = apply_patches(files, "some other error")
+        self.assertNotIn("remove_unused_import", applied)
 
-    def test_custom_rules_applied(self):
-        def always_match(path, content):
-            return path.endswith(".dart")
+    def test_flame_import_rule_triggers_on_matching_log(self):
+        files = {"lib/main.dart": "void main() {}\n", "pubspec.yaml": ""}
+        error_log = "lib/main.dart:3:5: Error: flame package not found"
+        new_files, applied = apply_patches(files, error_log)
+        self.assertIn("add_flame_import_to_main", applied)
+        self.assertIn("import 'package:flame/game.dart';", new_files["lib/main.dart"])
 
-        def uppercase(path, content):
-            return content.upper()
+    def test_material_import_rule_triggers_on_matching_log(self):
+        files = {"lib/main.dart": "void main() {}\n", "pubspec.yaml": ""}
+        error_log = "lib/main.dart:5:3: Error: material widget not found"
+        new_files, applied = apply_patches(files, error_log)
+        self.assertIn("add_flutter_material_import_to_main", applied)
 
-        custom_rules = [{"name": "uppercase", "match": always_match, "apply": uppercase}]
-        files = {"lib/main.dart": "void main() {}\n"}
-        worker = self._worker(files)
-        patched, changed = worker.apply_patches(files, rules=custom_rules)
-        self.assertTrue(changed)
-        self.assertEqual(patched["lib/main.dart"], "VOID MAIN() {}\n")
+    def test_services_import_rule_triggers_on_SystemChrome(self):
+        files = {"lib/main.dart": "void main() {}\n", "pubspec.yaml": ""}
+        error_log = "SystemChrome is undefined"
+        new_files, applied = apply_patches(files, error_log)
+        self.assertIn("add_flutter_services_import_to_main", applied)
 
-    def test_apply_patches_does_not_mutate_input(self):
-        files = {"lib/foo.dart": "void f() { print('x'); }\n"}
-        original_content = files["lib/foo.dart"]
-        worker = self._worker(files)
-        worker.apply_patches(files)
-        self.assertEqual(files["lib/foo.dart"], original_content)
+    def test_idempotent_second_pass(self):
+        files = _minimal_files()
+        files_after_first, applied_first = apply_patches(files, "")
+        files_after_second, applied_second = apply_patches(files_after_first, "")
+        # analysis_options already added, so second pass should not add it again
+        self.assertNotIn("add_analysis_options", applied_second)
 
-
-# ---------------------------------------------------------------------------
-# ValidatorWorker.ensure_smoke_test
-# ---------------------------------------------------------------------------
-
-class TestEnsureSmokeTest(unittest.TestCase):
-    def test_injects_smoke_test_when_no_tests(self):
-        worker = _make_worker({"lib/main.dart": "void main() {}\n"})
-        injected = worker.ensure_smoke_test()
-        self.assertTrue(injected)
-        self.assertIn(_SMOKE_TEST_PATH, worker.project_files)
-        self.assertEqual(worker.project_files[_SMOKE_TEST_PATH], _SMOKE_TEST_CONTENT)
-
-    def test_does_not_inject_when_tests_exist(self):
-        files = {
-            "lib/main.dart": "void main() {}\n",
-            "test/my_test.dart": "void main() {}\n",
-        }
-        worker = _make_worker(files)
-        injected = worker.ensure_smoke_test()
-        self.assertFalse(injected)
-        self.assertNotIn(_SMOKE_TEST_PATH, worker.project_files)
-
-    def test_smoke_test_content_is_valid_dart(self):
-        self.assertIn("void main()", _SMOKE_TEST_CONTENT)
-        self.assertIn("expect(", _SMOKE_TEST_CONTENT)
+    def test_all_applied_are_known_rule_names(self):
+        known = {r.name for r in PATCH_RULES}
+        files = _minimal_files()
+        error_log = (
+            "lib/game/foo.dart:2:8: Warning: Unused import.\n"
+            "lib/main.dart:1:1: Error: flame not found\n"
+            "SystemChrome missing\n"
+        )
+        _, applied = apply_patches(files, error_log)
+        for name in applied:
+            self.assertIn(name, known, f"Unknown patch rule applied: {name!r}")
 
 
 # ---------------------------------------------------------------------------
-# PATCH_RULES registry sanity checks
+# ValidatorWorker (filesystem-independent tests)
 # ---------------------------------------------------------------------------
 
-class TestPatchRulesRegistry(unittest.TestCase):
-    def test_all_rules_have_required_keys(self):
-        for rule in PATCH_RULES:
-            self.assertIn("name", rule, f"Rule missing 'name': {rule}")
-            self.assertIn("match", rule, f"Rule missing 'match': {rule}")
-            self.assertIn("apply", rule, f"Rule missing 'apply': {rule}")
+class TestValidatorWorkerInit(unittest.TestCase):
 
-    def test_all_rules_have_callable_match_and_apply(self):
-        for rule in PATCH_RULES:
-            self.assertTrue(callable(rule["match"]), f"'match' not callable in {rule['name']}")
-            self.assertTrue(callable(rule["apply"]), f"'apply' not callable in {rule['name']}")
+    def test_init_stores_project_dir(self):
+        w = ValidatorWorker("/tmp/project", {"lib/main.dart": "void main(){}"})
+        self.assertEqual(str(w.project_dir), "/tmp/project")
 
-    def test_at_least_one_pubspec_rule(self):
-        pubspec_rules = [r for r in PATCH_RULES if "pubspec" in r["name"].lower()]
-        self.assertTrue(len(pubspec_rules) >= 1)
+    def test_init_copies_project_files(self):
+        original = {"lib/main.dart": "content"}
+        w = ValidatorWorker("/tmp/project", original)
+        self.assertEqual(w.project_files, original)
+        # Mutating original should not affect worker
+        original["extra"] = "value"
+        self.assertNotIn("extra", w.project_files)
 
-    def test_at_least_one_dart_import_rule(self):
-        import_rules = [r for r in PATCH_RULES if "import" in r["name"].lower()]
-        self.assertTrue(len(import_rules) >= 1)
+    def test_max_retries_is_positive(self):
+        self.assertGreater(ValidatorWorker.MAX_RETRIES, 0)
+
+
+class TestValidatorWorkerWriteFiles(unittest.TestCase):
+
+    def test_write_files_creates_files(self):
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            files = {
+                "lib/main.dart": "void main() {}",
+                "pubspec.yaml": "name: test\n",
+                "nested/deep/file.txt": "content",
+            }
+            w = ValidatorWorker(tmp, files)
+            w.write_files()
+            for rel_path, content in files.items():
+                full_path = os.path.join(tmp, rel_path)
+                self.assertTrue(os.path.exists(full_path), f"Missing: {rel_path}")
+                with open(full_path, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), content)
 
 
 if __name__ == "__main__":

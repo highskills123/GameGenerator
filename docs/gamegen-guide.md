@@ -328,56 +328,47 @@ generated Dart code.
 
 ## Validation & Auto-Fix
 
-Pass `--validate` to run the full validation suite after scaffolding.
-Pass `--auto-fix` to apply deterministic patch rules and retry on failure.
-Pass `--run-tests` to also execute `flutter test` (a minimal smoke-test file
-is injected automatically if the project has no test files yet).
+Pass `--validate` to run `flutter pub get` + `flutter analyze` after
+scaffolding.  Pass `--auto-fix` to retry on failure (up to 3 times).
+
+The validation pipeline runs:
+1. `flutter pub get` – resolve dependencies
+2. `dart format .` – auto-format generated Dart files in-place
+3. `flutter analyze` – static analysis
 
 ```bash
-# Validate only
-python gamegen.py --prompt "space shooter" --out game.zip --validate
-
-# Auto-fix + validate
 python gamegen.py --prompt "space shooter" --out game.zip --auto-fix
-
-# Auto-fix + validate + run tests
-python gamegen.py --prompt "space shooter" --out game.zip --auto-fix --run-tests
 ```
 
-Requires Flutter SDK and Dart SDK on `PATH`.
+Requires Flutter SDK on `PATH`.
 
-### What validation runs
+### Auto-fix patch rules
 
-| Step | Command | Failure behaviour |
-|------|---------|-------------------|
-| 1 | `dart format .` | Warning only – continues |
-| 2 | `flutter pub get` | Hard failure – stops |
-| 3 | `flutter analyze` | Hard failure – stops |
-| 4 | `flutter test` | Hard failure – only when `--run-tests` |
+When `--auto-fix` is enabled, deterministic patch rules are applied on failure:
 
-### What auto-fix can do
+| Rule | Trigger |
+|------|---------|
+| `add_analysis_options` | Always – injects minimal `analysis_options.yaml` |
+| `remove_unused_import` | `Unused import` in analyzer output |
+| `fix_pubspec_assets_indentation` | Always – corrects `flutter:/assets:` YAML indent |
+| `add_flame_import_to_main` | `flame` + `lib/main.dart` in error log |
+| `add_flutter_material_import_to_main` | `material` + `lib/main.dart` in error log |
+| `add_flutter_services_import_to_main` | `SystemChrome`/`DeviceOrientation` in error log |
 
-Auto-fix applies a registry of **deterministic patch rules** before each
-retry.  If no rule changes any file the retry is skipped (avoiding
-unnecessary SDK invocations).
+Applied patch names are printed to stdout after each fix pass.
 
-| Rule | File(s) affected | What it fixes |
-|------|-----------------|---------------|
-| `pubspec: fix caret SDK constraints` | `pubspec.yaml` | Converts `^X.Y.Z` SDK constraints to `>=X.Y.Z <(X+1).0.0` |
-| `pubspec: ensure flutter_test dev_dependency` | `pubspec.yaml` | Adds `flutter_test` dev dependency when absent |
-| `pubspec: pin flame dependency` | `pubspec.yaml` | Pins `flame` to `^1.18.0` if a looser constraint is found |
-| `main.dart: ensure required imports` | `lib/main.dart` | Adds missing `flutter/material.dart`, `flutter/services.dart`, `flame/game.dart` imports |
-| `dart: replace print() with debugPrint()` | All non-test `.dart` files | Replaces bare `print(` calls with `debugPrint(` to silence analyzer warnings |
+### Optional smoke test
 
-The registry lives in `workers/validator.py` as `PATCH_RULES`.  Add new
-entries there to cover additional auto-fixable patterns.
+Pass `--smoke-test` (opt-in, default off) to run a check after `flutter analyze`:
 
-### Smoke-test injection
+```bash
+# flutter test (default)
+python gamegen.py --prompt "space shooter" --out game.zip --auto-fix --smoke-test
 
-When `--run-tests` is requested and the generated project has no test files,
-`ValidatorWorker.ensure_smoke_test()` writes a tiny `test/smoke_test.dart`
-that simply checks `1 + 1 == 2`.  Replace it with real tests before
-publishing.
+# flutter build apk --debug
+python gamegen.py --prompt "space shooter" --out game.zip --auto-fix \
+    --smoke-test --smoke-test-mode build
+```
 
 ---
 

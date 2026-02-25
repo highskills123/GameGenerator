@@ -65,6 +65,11 @@ Examples:
                         help="Run flutter pub get + flutter analyze after scaffolding")
     parser.add_argument("--auto-fix", dest="auto_fix", action="store_true",
                         help="Re-run validation and patch on failure (implies --validate)")
+    parser.add_argument("--smoke-test", dest="smoke_test", action="store_true",
+                        help="Run an optional smoke test after validation: flutter test or flutter build apk --debug (opt-in)")
+    parser.add_argument("--smoke-test-mode", dest="smoke_test_mode",
+                        choices=["test", "build"], default="test",
+                        help="Smoke test command: 'test' (flutter test) or 'build' (flutter build apk --debug) (default: test)")
 
     # UX flags
     parser.add_argument("--interactive", action="store_true",
@@ -143,6 +148,8 @@ def main() -> None:
             scope=args.scope,
             auto_fix=args.auto_fix,
             run_validation=args.validate,
+            smoke_test=args.smoke_test,
+            smoke_test_mode=args.smoke_test_mode,
             translator=translator,
             constraint_overrides={
                 "art_style": args.art_style,

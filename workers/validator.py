@@ -1,30 +1,20 @@
 """
-workers/validator.py – Flutter project validator.
+workers/validator.py – Flutter project validator with auto-fix pipeline.
 
-Runs (when the Flutter/Dart SDK is available on PATH):
-  1. ``dart format .``        – normalise Dart code style
-  2. ``flutter pub get``      – resolve dependencies
-  3. ``flutter analyze``      – static analysis
-  4. ``flutter test``         – minimal smoke test (optional; a smoke-test file
-                               is injected automatically if no tests exist yet)
+Validation pipeline (when enabled):
+  1. ``flutter pub get``
+  2. ``dart format`` (auto-formats generated Dart files in-place)
+  3. ``flutter analyze``
 
-Auto-fix
---------
-``auto_fix()`` applies a registry of *deterministic* patch rules before
-retrying validation.  Validation is only re-run when patches have actually
-changed at least one file, avoiding unnecessary SDK invocations.
+Auto-fix loop:
+  - Applies deterministic ``PatchRule`` patches against the in-memory file dict.
+  - Re-runs the full validation pipeline after each patch batch.
+  - Stops after ``MAX_RETRIES`` iterations or when all rules have been applied.
+  - Records each applied patch name in the returned log.
 
-Patch rule registry
--------------------
-Each rule in ``PATCH_RULES`` is a dict with:
-
-  ``name``     – human-readable label (used in log messages)
-  ``match``    – callable(path: str, content: str) -> bool
-                 True when this rule should fire for a file.
-  ``apply``    – callable(path: str, content: str) -> str
-                 Returns the (possibly unchanged) patched content.
-
-Rules are applied to every file in ``project_files`` on each auto-fix pass.
+Optional smoke test (opt-in):
+  - ``flutter test``  (if tests exist in the project directory)
+  - or ``flutter build apk --debug``  (heavier build check)
 """
 
 from __future__ import annotations
@@ -32,179 +22,233 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Smoke-test template injected when no test files exist
+# Deterministic patch rules
 # ---------------------------------------------------------------------------
 
-_SMOKE_TEST_PATH = "test/smoke_test.dart"
+@dataclass
+class PatchRule:
+    """A single deterministic patch rule for common Flutter/Flame generation issues."""
 
-_SMOKE_TEST_CONTENT = """\
-// Auto-generated smoke test – replace with real tests when ready.
-import 'package:flutter_test/flutter_test.dart';
-
-void main() {
-  test('smoke: project compiles', () {
-    expect(1 + 1, 2);
-  });
-}
-"""
-
-# ---------------------------------------------------------------------------
-# Patch rules
-# ---------------------------------------------------------------------------
-
-# Type aliases
-_MatchFn = Callable[[str, str], bool]
-_ApplyFn = Callable[[str, str], str]
+    name: str
+    description: str
+    # Returns True when this rule is applicable given the error log.
+    matches: Callable[[str], bool]
+    # Receives the current file dict and returns (patched_files, changed).
+    apply: Callable[[Dict[str, str]], Tuple[Dict[str, str], bool]]
 
 
-def _dart_file(path: str, _content: str) -> bool:
-    return path.endswith(".dart")
-
-
-def _pubspec_file(path: str, _content: str) -> bool:
-    return path == "pubspec.yaml"
-
-
-# ── Rule helpers ─────────────────────────────────────────────────────────────
-
-def _ensure_import(content: str, import_line: str) -> str:
-    """Prepend ``import_line`` if it is not already present."""
+def _add_import_if_missing(
+    files: Dict[str, str], dart_file: str, import_line: str
+) -> Tuple[Dict[str, str], bool]:
+    """Insert *import_line* near the top of *dart_file* if it is not already present."""
+    content = files.get(dart_file, "")
     if import_line in content:
-        return content
-    # Insert after existing import block (or at the top).
+        return files, False
     lines = content.splitlines(keepends=True)
-    insert_at = 0
+    insert_idx = 0
     for i, line in enumerate(lines):
-        if line.startswith("import ") or line.startswith("// "):
-            insert_at = i + 1
-    lines.insert(insert_at, import_line + "\n")
-    return "".join(lines)
+        if line.startswith("import ") or line.startswith("//"):
+            insert_idx = i + 1
+    new_lines = lines[:insert_idx] + [import_line + "\n"] + lines[insert_idx:]
+    files = dict(files)
+    files[dart_file] = "".join(new_lines)
+    return files, True
 
 
-def _fix_pubspec_sdk_constraint(content: str) -> str:
-    """
-    Ensure the ``environment.sdk`` constraint uses the ``>=X.Y.Z <A.0.0``
-    form that pub requires.  Replaces bare ``'^X.Y.Z'`` patterns.
-    """
-    # e.g.  sdk: '^3.0.0'  →  sdk: '>=3.0.0 <4.0.0'
-    return re.sub(
-        r"(sdk:\s*)'?\^(\d+\.\d+\.\d+)'?",
-        lambda m: f"{m.group(1)}'>=>{m.group(2)} <{int(m.group(2).split('.')[0]) + 1}.0.0'",
-        content,
+def _remove_unused_import(
+    files: Dict[str, str], error_log: str
+) -> Tuple[Dict[str, str], bool]:
+    """Remove the first unused import reported by dart analyzer."""
+    pattern = re.compile(
+        r"(lib/[^\s:]+\.dart):(\d+):\d+:.*[Uu]nused import",
+        re.MULTILINE,
     )
+    match = pattern.search(error_log)
+    if not match:
+        return files, False
+    rel_path = match.group(1)
+    line_no = int(match.group(2)) - 1  # 0-indexed
+    content = files.get(rel_path, "")
+    if not content:
+        return files, False
+    lines = content.splitlines(keepends=True)
+    if 0 <= line_no < len(lines) and lines[line_no].strip().startswith("import "):
+        lines.pop(line_no)
+        files = dict(files)
+        files[rel_path] = "".join(lines)
+        return files, True
+    return files, False
 
 
-def _fix_pubspec_sdk_constraint_arrow(content: str) -> str:
-    """Fix the ``>=>```` typo introduced by _fix_pubspec_sdk_constraint."""
-    return content.replace("'>=>'", "'>='").replace("'>=>{", "'>={")
+def _fix_pubspec_assets_indentation(
+    files: Dict[str, str],
+) -> Tuple[Dict[str, str], bool]:
+    """
+    Ensure the ``flutter: / assets:`` block in pubspec.yaml uses 2-space
+    indentation for ``assets:`` and 4-space for each asset entry.
+    """
+    pubspec = files.get("pubspec.yaml", "")
+    if not pubspec:
+        return files, False
+
+    lines = pubspec.splitlines(keepends=True)
+    new_lines: List[str] = []
+    changed = False
+    in_flutter_section = False
+    in_assets_section = False
+
+    for line in lines:
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+
+        if stripped.rstrip("\n") == "flutter:" and indent == 0:
+            in_flutter_section = True
+            in_assets_section = False
+            new_lines.append(line)
+            continue
+
+        if in_flutter_section:
+            if indent == 0 and stripped.strip() and not stripped.startswith("#"):
+                in_flutter_section = False
+                in_assets_section = False
+            elif stripped.startswith("assets:") and indent < 4:
+                in_assets_section = True
+                correct = "  assets:\n"
+                if line != correct:
+                    line = correct
+                    changed = True
+                new_lines.append(line)
+                continue
+            elif in_assets_section and stripped.startswith("- "):
+                correct_stripped = stripped.rstrip("\n")
+                correct_line = "    " + correct_stripped + "\n"
+                if line != correct_line:
+                    line = correct_line
+                    changed = True
+                new_lines.append(line)
+                continue
+
+        new_lines.append(line)
+
+    if not changed:
+        return files, False
+    files = dict(files)
+    files["pubspec.yaml"] = "".join(new_lines)
+    return files, True
 
 
-# ── Rule: ensure flutter_test dependency in pubspec ──────────────────────────
-
-def _apply_flutter_test_dep(path: str, content: str) -> str:
-    """Add ``flutter_test`` to dev_dependencies if absent."""
-    if "flutter_test:" in content:
-        return content
-    dev_block = "dev_dependencies:\n  flutter_test:\n    sdk: flutter\n"
-    if "dev_dependencies:" in content:
-        return content
-    # Append before the last blank line or at the end.
-    return content.rstrip("\n") + "\n\n" + dev_block
-
-
-# ── Rule: fix caret SDK constraints in pubspec ───────────────────────────────
-
-def _apply_pubspec_sdk(path: str, content: str) -> str:
-    fixed = _fix_pubspec_sdk_constraint(content)
-    fixed = _fix_pubspec_sdk_constraint_arrow(fixed)
-    return fixed
-
-
-# ── Rule: add missing 'package:flutter/material.dart' import to main.dart ────
-
-def _match_main_dart(path: str, _content: str) -> bool:
-    return path == "lib/main.dart"
-
-
-def _apply_main_dart_imports(path: str, content: str) -> str:
-    for imp in [
-        "import 'package:flutter/material.dart';",
-        "import 'package:flutter/services.dart';",
-        "import 'package:flame/game.dart';",
-    ]:
-        content = _ensure_import(content, imp)
-    return content
-
-
-# ── Rule: replace ``print(`` with ``debugPrint(`` in non-test Dart files ─────
-
-def _match_non_test_dart(path: str, _content: str) -> bool:
-    return path.endswith(".dart") and not path.startswith("test/")
-
-
-def _apply_debug_print(path: str, content: str) -> str:
-    # Only replace standalone print( calls (not debugPrint itself).
-    return re.sub(r'(?<!\w)print\(', 'debugPrint(', content)
-
-
-# ── Rule: pin flame to a concrete minor version in pubspec ───────────────────
-
-def _apply_pin_flame(path: str, content: str) -> str:
-    """Ensure flame is pinned to ``^1.18.0`` (not a looser constraint)."""
-    # Replace things like  flame: any  or  flame: ">=1.0.0"  with the pinned version.
-    return re.sub(
-        r'(  flame:\s*)(?!^\^1\.18\.0)([^\n]+)',
-        r'\1^1.18.0',
-        content,
-        flags=re.MULTILINE,
+def _add_analysis_options(files: Dict[str, str]) -> Tuple[Dict[str, str], bool]:
+    """
+    Add a minimal ``analysis_options.yaml`` if one is not present.
+    Silences the most common lints that trip up generated code while keeping
+    everything else enabled.
+    """
+    if "analysis_options.yaml" in files:
+        return files, False
+    files = dict(files)
+    files["analysis_options.yaml"] = (
+        "include: package:flutter_lints/flutter.yaml\n"
+        "\n"
+        "linter:\n"
+        "  rules:\n"
+        "    prefer_const_constructors: false\n"
+        "    avoid_print: false\n"
     )
+    return files, True
 
 
-# ---------------------------------------------------------------------------
-# Public patch registry
-# ---------------------------------------------------------------------------
+def _make_patch_rules() -> List[PatchRule]:
+    """Return the ordered list of deterministic patch rules."""
+    return [
+        PatchRule(
+            name="add_analysis_options",
+            description="Add minimal analysis_options.yaml to suppress noisy lints",
+            matches=lambda log: True,  # always try; apply() is idempotent
+            apply=_add_analysis_options,
+        ),
+        PatchRule(
+            name="remove_unused_import",
+            description="Remove the first unused import reported by dart analyze",
+            matches=lambda log: bool(re.search(r"[Uu]nused import", log)),
+            # apply is a stub; the real logic is handled in apply_patches()
+            apply=lambda files: (files, False),
+        ),
+        PatchRule(
+            name="fix_pubspec_assets_indentation",
+            description="Fix pubspec.yaml flutter/assets indentation",
+            matches=lambda log: True,  # always try; apply() is idempotent
+            apply=_fix_pubspec_assets_indentation,
+        ),
+        PatchRule(
+            name="add_flame_import_to_main",
+            description="Add missing flame/game.dart import to lib/main.dart",
+            matches=lambda log: "flame" in log and "lib/main.dart" in log,
+            apply=lambda files: _add_import_if_missing(
+                files, "lib/main.dart", "import 'package:flame/game.dart';"
+            ),
+        ),
+        PatchRule(
+            name="add_flutter_material_import_to_main",
+            description="Add missing flutter/material.dart import to lib/main.dart",
+            matches=lambda log: "material" in log and "lib/main.dart" in log,
+            apply=lambda files: _add_import_if_missing(
+                files, "lib/main.dart", "import 'package:flutter/material.dart';"
+            ),
+        ),
+        PatchRule(
+            name="add_flutter_services_import_to_main",
+            description="Add missing flutter/services.dart import to lib/main.dart",
+            matches=lambda log: "SystemChrome" in log or "DeviceOrientation" in log,
+            apply=lambda files: _add_import_if_missing(
+                files, "lib/main.dart", "import 'package:flutter/services.dart';"
+            ),
+        ),
+    ]
 
-#: Registry of deterministic patch rules applied during auto-fix.
-#: Each entry: {"name": str, "match": MatchFn, "apply": ApplyFn}
-PATCH_RULES: List[Dict] = [
-    {
-        "name": "pubspec: fix caret SDK constraints",
-        "match": _pubspec_file,
-        "apply": _apply_pubspec_sdk,
-    },
-    {
-        "name": "pubspec: ensure flutter_test dev_dependency",
-        "match": _pubspec_file,
-        "apply": _apply_flutter_test_dep,
-    },
-    {
-        "name": "pubspec: pin flame dependency",
-        "match": _pubspec_file,
-        "apply": _apply_pin_flame,
-    },
-    {
-        "name": "main.dart: ensure required imports",
-        "match": _match_main_dart,
-        "apply": _apply_main_dart_imports,
-    },
-    {
-        "name": "dart: replace print() with debugPrint()",
-        "match": _match_non_test_dart,
-        "apply": _apply_debug_print,
-    },
-]
+
+PATCH_RULES: List[PatchRule] = _make_patch_rules()
+
+
+def apply_patches(
+    files: Dict[str, str],
+    error_log: str,
+) -> Tuple[Dict[str, str], List[str]]:
+    """
+    Apply all matching deterministic patch rules to *files*.
+
+    Args:
+        files:     Current in-memory project file dict.
+        error_log: Combined stdout/stderr from the last failed validation run.
+
+    Returns:
+        ``(patched_files, applied_rule_names)``
+    """
+    applied: List[str] = []
+    for rule in PATCH_RULES:
+        if not rule.matches(error_log):
+            continue
+        if rule.name == "remove_unused_import":
+            # Special-case: needs the error_log passed in directly.
+            new_files, changed = _remove_unused_import(files, error_log)
+        else:
+            new_files, changed = rule.apply(files)
+        if changed:
+            files = new_files
+            applied.append(rule.name)
+            logger.info("Patch applied: %s", rule.name)
+    return files, applied
 
 
 # ---------------------------------------------------------------------------
 # ValidatorWorker
 # ---------------------------------------------------------------------------
-
 
 class ValidatorWorker:
     """Validates a generated Flutter project."""
@@ -226,159 +270,132 @@ class ValidatorWorker:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content, encoding="utf-8")
 
-    def ensure_smoke_test(self) -> bool:
+    def validate(
+        self,
+        run_format: bool = True,
+        run_smoke_test: bool = False,
+        smoke_test_mode: str = "test",
+    ) -> Tuple[bool, str]:
         """
-        Inject a minimal smoke-test file if no test files exist yet.
+        Run the full validation pipeline.
 
-        Returns:
-            True if a smoke-test file was added, False otherwise.
-        """
-        has_tests = any(
-            p.startswith("test/") and p.endswith(".dart")
-            for p in self.project_files
-        )
-        if not has_tests:
-            logger.info("No test files found; injecting smoke test at %s.", _SMOKE_TEST_PATH)
-            self.project_files[_SMOKE_TEST_PATH] = _SMOKE_TEST_CONTENT
-            return True
-        return False
-
-    def validate(self, run_tests: bool = False) -> Tuple[bool, str]:
-        """
-        Run formatting, dependency resolution, and static analysis.
-
-        Steps (each aborts early on non-zero exit):
-          1. ``dart format .``   (skipped if ``dart`` not on PATH)
-          2. ``flutter pub get``
-          3. ``flutter analyze``
-          4. ``flutter test``    (only when *run_tests* is True; a smoke-test
-                                  file is injected automatically if absent)
+        Steps:
+            1. ``flutter pub get``
+            2. ``dart format .``  (when *run_format* is ``True``)
+            3. ``flutter analyze``
+            4. Smoke test  (when *run_smoke_test* is ``True``)
 
         Args:
-            run_tests: Also run ``flutter test`` when True.
+            run_format:      Run ``dart format .`` before ``flutter analyze``.
+            run_smoke_test:  Run an optional smoke test after analysis.
+            smoke_test_mode: ``"test"`` → ``flutter test``;
+                             ``"build"`` → ``flutter build apk --debug``.
 
         Returns:
             ``(success, combined_log)`` tuple.
         """
         log_lines: List[str] = []
 
-        # Step 1 – dart format (best-effort; skip if dart not available)
-        fmt_result = self._run(["dart", "format", "."])
-        log_lines.append("$ dart format .")
-        log_lines.append(fmt_result.stdout or "")
-        log_lines.append(fmt_result.stderr or "")
-        if fmt_result.returncode != 0:
-            logger.warning(
-                "dart format failed (returncode=%d); continuing.",
-                fmt_result.returncode,
-            )
+        # 1. flutter pub get
+        result = self._run(["flutter", "pub", "get"])
+        log_lines.append("$ flutter pub get")
+        log_lines.append(result.stdout or "")
+        log_lines.append(result.stderr or "")
+        if result.returncode != 0:
+            logger.warning("flutter pub get failed")
+            return False, "\n".join(log_lines)
 
-        # Steps 2–3 – pub get + analyze (hard failures)
-        for cmd in [["flutter", "pub", "get"], ["flutter", "analyze"]]:
-            result = self._run(cmd)
-            log_lines.append(f"$ {' '.join(cmd)}")
+        # 2. dart format (auto-formats in place; idempotent)
+        if run_format:
+            result = self._run(["dart", "format", "."])
+            log_lines.append("$ dart format .")
             log_lines.append(result.stdout or "")
             log_lines.append(result.stderr or "")
             if result.returncode != 0:
-                logger.warning("Command failed: %s", " ".join(cmd))
+                logger.warning("dart format failed")
                 return False, "\n".join(log_lines)
 
-        # Step 4 – flutter test (optional)
-        if run_tests:
-            self.ensure_smoke_test()
-            self.write_files()
-            result = self._run(["flutter", "test"])
-            log_lines.append("$ flutter test")
+        # 3. flutter analyze
+        result = self._run(["flutter", "analyze"])
+        log_lines.append("$ flutter analyze")
+        log_lines.append(result.stdout or "")
+        log_lines.append(result.stderr or "")
+        if result.returncode != 0:
+            logger.warning("flutter analyze failed")
+            return False, "\n".join(log_lines)
+
+        # 4. Optional smoke test
+        if run_smoke_test:
+            smoke_cmd = (
+                ["flutter", "build", "apk", "--debug"]
+                if smoke_test_mode == "build"
+                else ["flutter", "test"]
+            )
+            result = self._run(smoke_cmd)
+            log_lines.append(f"$ {' '.join(smoke_cmd)}")
             log_lines.append(result.stdout or "")
             log_lines.append(result.stderr or "")
             if result.returncode != 0:
-                logger.warning("flutter test failed.")
+                logger.warning("Smoke test failed: %s", " ".join(smoke_cmd))
                 return False, "\n".join(log_lines)
 
         return True, "\n".join(log_lines)
-
-    def apply_patches(
-        self,
-        project_files: Dict[str, str],
-        rules: Optional[List[Dict]] = None,
-    ) -> Tuple[Dict[str, str], bool]:
-        """
-        Apply all matching patch rules to *project_files*.
-
-        Args:
-            project_files: Current file map.
-            rules:         Rule list to use (defaults to :data:`PATCH_RULES`).
-
-        Returns:
-            ``(patched_files, changed)`` where *changed* is True when at least
-            one file was modified.
-        """
-        if rules is None:
-            rules = PATCH_RULES
-
-        patched = dict(project_files)
-        changed = False
-
-        for rule in rules:
-            for path, content in list(patched.items()):
-                if rule["match"](path, content):
-                    new_content = rule["apply"](path, content)
-                    if new_content != content:
-                        logger.info("Patch applied [%s] → %s", rule["name"], path)
-                        patched[path] = new_content
-                        changed = True
-
-        return patched, changed
 
     def auto_fix(
         self,
         spec: Dict,
         error_logs: str,
         project_files: Dict[str, str],
-        run_tests: bool = False,
+        run_format: bool = True,
+        run_smoke_test: bool = False,
+        smoke_test_mode: str = "test",
     ) -> Dict[str, str]:
         """
-        Apply deterministic patch rules then rerun validation.
-
-        The validation re-run is **skipped** when no patch changed any file,
-        avoiding unnecessary Flutter SDK invocations.
+        Apply deterministic patches then re-run validation, up to ``MAX_RETRIES``.
 
         Args:
-            spec:          GameSpec dict (reserved for future LLM-assisted
-                           patching; not used by the current rule engine).
-            error_logs:    Combined stdout/stderr from the last failed
-                           validation run.
-            project_files: Current file map.
-            run_tests:     Forward to :meth:`validate`.
+            spec:             GameSpec dict (reserved for future LLM patches).
+            error_logs:       Combined log from the last failed validation run.
+            project_files:    Current in-memory project file dict.
+            run_format:       Pass through to ``validate()``.
+            run_smoke_test:   Pass through to ``validate()``.
+            smoke_test_mode:  Pass through to ``validate()``.
 
         Returns:
-            The (possibly patched) file map.
+            ``final_project_files`` (patched file dict).
+            Applied patch names are printed to stdout and logged.
         """
+        files = dict(project_files)
+        all_applied: List[str] = []
+        current_log = error_logs
+
         for attempt in range(1, self.MAX_RETRIES + 1):
             logger.info("Auto-fix attempt %d/%d", attempt, self.MAX_RETRIES)
 
-            patched, changed = self.apply_patches(project_files)
+            files, applied = apply_patches(files, current_log)
+            all_applied.extend(applied)
 
-            if not changed:
-                logger.info(
-                    "No patches changed any file on attempt %d; "
-                    "skipping rerun.",
-                    attempt,
-                )
+            if not applied:
+                logger.info("No more patches applicable; stopping auto-fix.")
                 break
 
-            project_files = patched
-            self.project_files = project_files
+            self.project_files = files
             self.write_files()
-
-            success, logs = self.validate(run_tests=run_tests)
+            success, current_log = self.validate(
+                run_format=run_format,
+                run_smoke_test=run_smoke_test,
+                smoke_test_mode=smoke_test_mode,
+            )
             if success:
                 logger.info("Auto-fix succeeded on attempt %d.", attempt)
-                return project_files
-            error_logs = logs
+                break
+        else:
+            logger.warning("Auto-fix exhausted %d retries.", self.MAX_RETRIES)
 
-        logger.warning("Auto-fix exhausted %d retries.", self.MAX_RETRIES)
-        return project_files
+        if all_applied:
+            print(f"      Applied patches: {', '.join(all_applied)}")
+        logger.info("Applied patches: %s", all_applied)
+        return files
 
     # ------------------------------------------------------------------
     # Private helpers
