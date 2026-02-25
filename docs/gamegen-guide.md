@@ -86,8 +86,9 @@ asset_importer.import_assets() ← scan --assets-dir, copy to project_dir
 scaffolder.scaffold_project()  ← genre plugin + boilerplate files
         │  {path: content}
         ▼
-ValidatorWorker (optional)     ← flutter pub get + flutter analyze [+ auto-fix]
-        │
+ValidatorWorker (optional)     ← flutter pub get + dart format + flutter analyze
+        │                               [+ deterministic auto-fix loop]
+        │                               [+ optional smoke test]
         ▼
 zip_exporter.export_to_zip()   ← output.zip
 ```
@@ -116,6 +117,16 @@ python gamegen.py \
     --scope vertical-slice \
     --art-style pixel-art \
     --auto-fix
+
+# With validation only (no patching)
+python gamegen.py --prompt "space shooter" --out game.zip --validate
+
+# With auto-fix + optional smoke test (flutter test)
+python gamegen.py --prompt "space shooter" --out game.zip --auto-fix --smoke-test
+
+# With smoke test using flutter build apk --debug
+python gamegen.py --prompt "space shooter" --out game.zip \
+    --auto-fix --smoke-test --smoke-test-mode build
 
 # Interactive constraint prompts
 python gamegen.py --prompt "space shooter" --out game.zip --interactive
@@ -328,14 +339,76 @@ generated Dart code.
 
 ## Validation & Auto-Fix
 
-Pass `--validate` to run `flutter pub get` + `flutter analyze` after
-scaffolding.  Pass `--auto-fix` to retry on failure (up to 3 times).
+### Validation pipeline
+
+Pass `--validate` (or `--auto-fix`) to run the full validation pipeline:
+
+1. `flutter pub get` – resolve dependencies
+2. `dart format .` – auto-format generated Dart files in-place
+3. `flutter analyze` – static analysis
+
+```bash
+python gamegen.py --prompt "space shooter" --out game.zip --validate
+```
+
+Requires Flutter SDK on `PATH`.
+
+### Auto-fix loop
+
+Pass `--auto-fix` to apply deterministic patch rules on failure, then
+re-run validation.  The loop runs up to 3 times (`MAX_RETRIES`).
+
+Built-in patch rules:
+
+| Rule | Trigger |
+|------|---------|
+| `add_analysis_options` | Always; adds a minimal `analysis_options.yaml` |
+| `remove_unused_import` | `Unused import` in analyzer output |
+| `fix_pubspec_assets_indentation` | Always; corrects `flutter:/assets:` indent |
+| `add_flame_import_to_main` | `flame` + `lib/main.dart` in error log |
+| `add_flutter_material_import_to_main` | `material` + `lib/main.dart` in error log |
+| `add_flutter_services_import_to_main` | `SystemChrome` / `DeviceOrientation` in log |
+
+Each applied patch name is printed to stdout and available in the run log.
 
 ```bash
 python gamegen.py --prompt "space shooter" --out game.zip --auto-fix
 ```
 
-Requires Flutter SDK on `PATH`.
+### Optional smoke test
+
+Pass `--smoke-test` (opt-in, not default) to run a lightweight check after
+`flutter analyze` succeeds.
+
+| `--smoke-test-mode` | Command |
+|---------------------|---------|
+| `test` *(default)* | `flutter test` |
+| `build` | `flutter build apk --debug` |
+
+```bash
+# Run flutter test after analysis
+python gamegen.py --prompt "space shooter" --out game.zip --validate --smoke-test
+
+# Run flutter build apk --debug instead
+python gamegen.py --prompt "space shooter" --out game.zip \
+    --auto-fix --smoke-test --smoke-test-mode build
+```
+
+### REST API
+
+The same options are available via the `POST /api/generate/game` endpoint:
+
+```json
+{
+    "prompt": "top down space shooter",
+    "platform": "android",
+    "scope": "prototype",
+    "validate": true,
+    "auto_fix": true,
+    "smoke_test": false,
+    "smoke_test_mode": "test"
+}
+```
 
 ---
 

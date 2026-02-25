@@ -80,6 +80,7 @@ def api_info():
             'POST /api/translate': 'Translate natural language to code',
             'GET /api/languages': 'Get list of supported languages',
             'GET /api/health': 'Health check endpoint',
+            'POST /api/generate/game': 'Generate Flutter/Flame game project ZIP',
             'POST /api/generate/flutter/widget': 'Generate Flutter widget',
             'POST /api/generate/flutter/screen': 'Generate Flutter screen',
             'POST /api/generate/flutter/app': 'Generate Flutter app',
@@ -429,6 +430,82 @@ def generate_react_native_app():
         return jsonify({'success': False, 'error': str(e)}), 503
     except Exception as e:
         app.logger.error(f"React Native app generation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== Game Generation Endpoint ==========
+
+@app.route('/api/generate/game', methods=['POST'])
+def generate_game():
+    """
+    Generate a complete Flutter/Flame game project ZIP.
+
+    Request body:
+    {
+        "prompt":          "top down space shooter",   // required
+        "platform":        "android",                  // optional, default "android"
+        "scope":           "prototype",                // optional, default "prototype"
+        "art_style":       "pixel-art",                // optional
+        "validate":        false,                      // optional, run validation pipeline
+        "auto_fix":        false,                      // optional, apply patches on failure
+        "smoke_test":      false,                      // optional, run smoke test
+        "smoke_test_mode": "test"                      // optional, "test" or "build"
+    }
+
+    Response:
+    {
+        "success": true,
+        "zip_path": "/tmp/aibase_game_xxxxx/game.zip"
+    }
+    """
+    import os
+    import tempfile
+
+    try:
+        data = request.get_json()
+        is_valid, error_msg = validate_request_data(data, ['prompt'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        prompt = data['prompt']
+        platform = data.get('platform', 'android')
+        scope = data.get('scope', 'prototype')
+        art_style = data.get('art_style', 'pixel-art')
+        run_validation = bool(data.get('validate', False))
+        auto_fix = bool(data.get('auto_fix', False))
+        smoke_test = bool(data.get('smoke_test', False))
+        smoke_test_mode = data.get('smoke_test_mode', 'test')
+
+        if platform not in ('android', 'android+ios'):
+            return jsonify({'success': False, 'error': f'Unsupported platform: {platform}'}), 400
+        if scope not in ('prototype', 'vertical-slice'):
+            return jsonify({'success': False, 'error': f'Unsupported scope: {scope}'}), 400
+        if smoke_test_mode not in ('test', 'build'):
+            return jsonify({'success': False, 'error': f'Invalid smoke_test_mode: {smoke_test_mode}'}), 400
+
+        tmp_dir = tempfile.mkdtemp(prefix='aibase_game_api_')
+        zip_path = os.path.join(tmp_dir, 'game.zip')
+
+        from orchestrator.orchestrator import Orchestrator
+        orchestrator = Orchestrator(interactive=False)
+        orchestrator.run(
+            prompt=prompt,
+            output_zip=zip_path,
+            platform=platform,
+            scope=scope,
+            auto_fix=auto_fix,
+            run_validation=run_validation,
+            smoke_test=smoke_test,
+            smoke_test_mode=smoke_test_mode,
+            constraint_overrides={'art_style': art_style},
+        )
+
+        return jsonify({'success': True, 'zip_path': zip_path})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        app.logger.error(f'Game generation error: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
