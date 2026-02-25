@@ -139,6 +139,8 @@ class Orchestrator:
                 design_doc_content = _json.dumps(doc, indent=2)
                 resolved_design_doc_path = design_doc_path or "assets/design/design.json"
             print(f"      Design doc will be written to: {resolved_design_doc_path}")
+            # Make design doc data available to the genre generator (e.g. idle_rpg)
+            spec["design_doc_data"] = doc
 
         # ── 3–5. Scaffold, import assets, export ZIP ────────────────────
         with tempfile.TemporaryDirectory(prefix="aibase_game_") as tmp_dir:
