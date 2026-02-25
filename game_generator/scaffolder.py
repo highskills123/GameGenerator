@@ -8,10 +8,15 @@ dict of {relative_path: file_content} representing the full Flutter project.
 from __future__ import annotations
 
 import os
+import string
+from pathlib import Path
 from typing import Dict, List
 
 from .spec import GameSpec
 from .genres import get_genre_plugin
+
+# Directory that contains the Markdown skeleton templates.
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "flutter"
 
 # Required files that every generated project must contain.
 REQUIRED_FILES = {
@@ -19,6 +24,7 @@ REQUIRED_FILES = {
     "lib/main.dart",
     "README.md",
     "ASSETS_LICENSE.md",
+    "CREDITS.md",
 }
 
 
@@ -49,17 +55,26 @@ def scaffold_project(
     # Derive the main game class name from genre files
     game_class = _infer_game_class(spec)
 
-    # 2. main.dart
+    # 2. main.dart  (orientation-locked for mobile)
     files["lib/main.dart"] = _main_dart(spec, game_class)
 
     # 3. pubspec.yaml
     files["pubspec.yaml"] = _pubspec_yaml(spec, imported_asset_paths)
 
-    # 4. README.md
+    # 4. README.md  (loaded from template)
     files["README.md"] = _readme_md(spec)
 
-    # 5. ASSETS_LICENSE.md
+    # 5. ASSETS_LICENSE.md  (loaded from template)
     files["ASSETS_LICENSE.md"] = _assets_license_md(spec)
+
+    # 6. CREDITS.md  (loaded from template)
+    files["CREDITS.md"] = _credits_md(spec)
+
+    # 7. Android manifest  (required for mobile play)
+    files["android/app/src/main/AndroidManifest.xml"] = _android_manifest(spec)
+
+    # 8. iOS Info.plist  (required for iOS builds)
+    files["ios/Runner/Info.plist"] = _ios_info_plist(spec)
 
     return files
 
@@ -78,13 +93,28 @@ def _infer_game_class(spec: GameSpec) -> str:
 
 def _main_dart(spec: GameSpec, game_class: str) -> str:
     title = spec.get("title", "My Game")
+    orientation = spec.get("orientation", "portrait")
+    if orientation == "landscape":
+        orient_values = (
+            "DeviceOrientation.landscapeLeft,\n"
+            "    DeviceOrientation.landscapeRight,"
+        )
+    else:
+        orient_values = (
+            "DeviceOrientation.portraitUp,\n"
+            "    DeviceOrientation.portraitDown,"
+        )
     return f"""\
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'game/game.dart';
 
-void main() {{
+void main() async {{
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    {orient_values}
+  ]);
   runApp(const {game_class}App());
 }}
 
@@ -145,15 +175,52 @@ flutter:
 """
 
 
+def _load_template(name: str) -> str:
+    """Load a skeleton template from templates/flutter/. Returns None if missing."""
+    path = _TEMPLATES_DIR / name
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return None
+
+
+def _render_template(name: str, **kwargs) -> str:
+    """
+    Load a template and substitute $VAR placeholders.
+
+    Uses ``string.Template`` so ``$title``, ``$genre``, etc. are replaced.
+    Literal ``$`` signs in the template must be written as ``$$``.
+    Falls back to the *fallback* kwarg (a string) if the template file is missing.
+    """
+    fallback = kwargs.pop("_fallback", "")
+    raw = _load_template(name)
+    if raw is None:
+        return fallback
+    return string.Template(raw).safe_substitute(kwargs)
+
+
 def _readme_md(spec: GameSpec) -> str:
+    controls = spec.get("controls", {})
+    mechanics = spec.get("mechanics", [])
+    return _render_template(
+        "README.md.tmpl",
+        title=spec.get("title", "My Game"),
+        genre=spec.get("genre", "unknown"),
+        core_loop=spec.get("core_loop", ""),
+        mechanics=", ".join(mechanics),
+        kb=", ".join(controls.get("keyboard", [])),
+        mobile=", ".join(controls.get("mobile", [])),
+        orientation=spec.get("orientation", "portrait"),
+        _fallback=_readme_md_fallback(spec),
+    )
+
+
+def _readme_md_fallback(spec: GameSpec) -> str:
     title = spec.get("title", "My Game")
     genre = spec.get("genre", "unknown")
     mechanics = ", ".join(spec.get("mechanics", []))
     controls = spec.get("controls", {})
-
     kb = ", ".join(controls.get("keyboard", []))
     mobile = ", ".join(controls.get("mobile", []))
-
     return f"""\
 # {title}
 
@@ -180,30 +247,143 @@ flutter run
 ```
 
 ## Asset Licensing
-See [ASSETS_LICENSE.md](ASSETS_LICENSE.md) for information about the assets
-bundled with this project.
+See [ASSETS_LICENSE.md](ASSETS_LICENSE.md) and [CREDITS.md](CREDITS.md).
 """
 
 
 def _assets_license_md(spec: GameSpec) -> str:
+    return _render_template(
+        "ASSETS_LICENSE.md.tmpl",
+        title=spec.get("title", "My Game"),
+        _fallback=_assets_license_md_fallback(spec),
+    )
+
+
+def _assets_license_md_fallback(spec: GameSpec) -> str:
     title = spec.get("title", "My Game")
     return f"""\
 # Asset Licensing – {title}
 
-The assets located in `assets/imported/` were supplied by the user from a
-local folder at project generation time.  **Aibase does not redistribute
-these assets.**
+The assets in `assets/imported/` were supplied by the user from a local
+folder at project generation time.  **Aibase does not redistribute these assets.**
 
 ## Your Responsibilities
 - Ensure you hold the appropriate licence for every asset file included here.
-- If assets originate from a third-party (e.g. itch.io asset packs), consult
-  the relevant licence file (often `LICENSE.txt` or `README` inside the
-  original pack) before distributing your game.
-- Aibase does **not** automatically download assets from any online storefront;
-  all assets in this project were explicitly provided by you.
+- If assets originate from a third-party, consult the relevant licence file
+  before distributing your game.
+- Aibase does **not** automatically download assets from any online storefront.
 
 ## Placeholder Assets
-If Aibase could not find a matching asset in your supplied folder it may have
-generated a coloured rectangle placeholder in code.  Replace these with your
-real artwork before publishing.
+If Aibase could not find a matching asset it may have generated a coloured
+rectangle placeholder in code.  Replace these before publishing.
+"""
+
+
+def _credits_md(spec: GameSpec) -> str:
+    assets_dir = spec.get("assets_dir", "")
+    if assets_dir:
+        assets_source_note = f"Assets were imported from: `{assets_dir}`"
+    else:
+        assets_source_note = (
+            "No --assets-dir was supplied; assets/imported/ contains placeholders."
+        )
+    return _render_template(
+        "CREDITS.md.tmpl",
+        title=spec.get("title", "My Game"),
+        assets_source_note=assets_source_note,
+        _fallback=_credits_md_fallback(spec, assets_source_note),
+    )
+
+
+def _credits_md_fallback(spec: GameSpec, assets_source_note: str) -> str:
+    title = spec.get("title", "My Game")
+    return f"""\
+# Credits – {title}
+
+Generated by **Aibase** – Flutter/Flame Game Generator.
+
+## Assets
+{assets_source_note}
+
+## Third-Party Libraries
+| Package | Version | Licence |
+|---------|---------|---------|
+| flame   | ^1.18.0 | MIT     |
+| flutter | SDK     | BSD-3-Clause |
+
+## Your Responsibilities
+Ensure you hold the appropriate licence for every asset in this project.
+"""
+
+
+def _android_manifest(spec: GameSpec) -> str:
+    orientation = spec.get("orientation", "portrait")
+    android_orient = (
+        "sensorLandscape" if orientation == "landscape" else "sensorPortrait"
+    )
+    title = spec.get("title", "My Game")
+    pkg_label = "".join(
+        ch if ch.isalnum() or ch == "_" else "_" for ch in title.lower()
+    ).strip("_") or "my_game"
+    return f"""\
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="{pkg_label}"
+        android:name="${{applicationName}}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="{android_orient}"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>
+"""
+
+
+def _ios_info_plist(spec: GameSpec) -> str:
+    orientation = spec.get("orientation", "portrait")
+    title = spec.get("title", "My Game")
+    if orientation == "landscape":
+        supported = """\
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>"""
+    else:
+        supported = """\
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>"""
+    return f"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>{title}</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+{supported}
+    </array>
+    <key>io.flutter.embedded_views_preview</key>
+    <true/>
+</dict>
+</plist>
 """

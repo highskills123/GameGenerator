@@ -28,6 +28,7 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/game/bullet.dart"] = _bullet_dart(safe_name)
     files["lib/game/bullet_pool.dart"] = _bullet_pool_dart(safe_name)
     files["lib/game/hud.dart"] = _hud_dart(safe_name)
+    files["lib/game/mobile_controls.dart"] = _mobile_controls_dart(safe_name)
     files["lib/game/game_over_overlay.dart"] = _game_over_overlay_dart(safe_name)
     return files
 
@@ -49,6 +50,7 @@ import 'player.dart';
 import 'enemy.dart';
 import 'bullet_pool.dart';
 import 'hud.dart';
+import 'mobile_controls.dart';
 
 class {name}Game extends FlameGame
     with HasCollisionDetection, KeyboardEvents {{
@@ -58,6 +60,9 @@ class {name}Game extends FlameGame
   // Game objects
   late final Player player;
   late final BulletPool bulletPool;
+
+  // Mobile controls
+  late final JoystickComponent joystick;
 
   // Score / state
   int score = 0;
@@ -89,6 +94,11 @@ class {name}Game extends FlameGame
     player = Player(game: this);
     await player.onLoad();
     add(player);
+
+    // Mobile virtual joystick + fire button
+    final controls = MobileControls(game: this);
+    joystick = controls.joystick;
+    add(controls);
 
     // HUD
     add(Hud(game: this));
@@ -161,8 +171,8 @@ class Player extends SpriteComponent with CollisionCallbacks {{
   static const double _shootCooldown = 0.25;
   double _shootTimer = 0;
 
-  // Direction vector – updated from keyboard state, no per-frame alloc
-  final Vector2 _dir = Vector2.zero();
+  // Keyboard direction vector – updated from key events, no per-frame alloc
+  final Vector2 _keyDir = Vector2.zero();
 
   Player({{required this.game}}) : super(size: Vector2(48, 48));
 
@@ -174,22 +184,22 @@ class Player extends SpriteComponent with CollisionCallbacks {{
   }}
 
   void handleKeys(Set<LogicalKeyboardKey> keys) {{
-    _dir.setZero();
+    _keyDir.setZero();
     if (keys.contains(LogicalKeyboardKey.arrowLeft) ||
         keys.contains(LogicalKeyboardKey.keyA)) {{
-      _dir.x -= 1;
+      _keyDir.x -= 1;
     }}
     if (keys.contains(LogicalKeyboardKey.arrowRight) ||
         keys.contains(LogicalKeyboardKey.keyD)) {{
-      _dir.x += 1;
+      _keyDir.x += 1;
     }}
     if (keys.contains(LogicalKeyboardKey.arrowUp) ||
         keys.contains(LogicalKeyboardKey.keyW)) {{
-      _dir.y -= 1;
+      _keyDir.y -= 1;
     }}
     if (keys.contains(LogicalKeyboardKey.arrowDown) ||
         keys.contains(LogicalKeyboardKey.keyS)) {{
-      _dir.y += 1;
+      _keyDir.y += 1;
     }}
   }}
 
@@ -208,9 +218,13 @@ class Player extends SpriteComponent with CollisionCallbacks {{
     super.update(dt);
     if (_shootTimer > 0) _shootTimer -= dt;
 
-    // Move
-    if (_dir.length2 > 0) {{
-      position.addScaled(_dir.normalized(), _speed * dt);
+    // Prefer keyboard; fall back to joystick (mobile)
+    final joystickDelta = game.joystick.relativeDelta;
+    if (_keyDir.length2 > 0) {{
+      position.addScaled(_keyDir.normalized(), _speed * dt);
+    }} else if (joystickDelta.length2 > 0) {{
+      // relativeDelta is already normalised in the range [-1, 1]
+      position.addScaled(joystickDelta, _speed * dt);
     }}
 
     // Clamp to screen
@@ -391,6 +405,59 @@ class Hud extends TextComponent with HasGameRef<{name}Game> {{
   void update(double dt) {{
     super.update(dt);
     text = 'Score: ${{gameRef.score}}';
+  }}
+}}
+"""
+
+
+def _mobile_controls_dart(name: str) -> str:
+    return f"""\
+import 'package:flame/components.dart';
+import 'package:flame/input.dart';
+import 'package:flutter/material.dart';
+import 'game.dart';
+
+/// Mobile on-screen controls: virtual joystick (left) + fire button (right).
+///
+/// Both controls are [HudComponent]-like; they stay fixed on the viewport
+/// regardless of the game camera.  On desktop the joystick is ignored and
+/// keyboard input takes priority (see Player.update).
+class MobileControls extends Component {{
+  final {name}Game game;
+  late final JoystickComponent joystick;
+
+  MobileControls({{required this.game}});
+
+  @override
+  Future<void> onLoad() async {{
+    // Joystick – bottom-left corner
+    joystick = JoystickComponent(
+      knob: CircleComponent(
+        radius: 20,
+        paint: Paint()..color = const Color(0xBBFFFFFF),
+      ),
+      background: CircleComponent(
+        radius: 55,
+        paint: Paint()..color = const Color(0x44FFFFFF),
+      ),
+      margin: const EdgeInsets.only(left: 48, bottom: 48),
+    );
+    add(joystick);
+
+    // Fire button – bottom-right corner
+    final fireButton = HudButtonComponent(
+      button: CircleComponent(
+        radius: 36,
+        paint: Paint()..color = const Color(0xAAFF3333),
+      ),
+      buttonDown: CircleComponent(
+        radius: 36,
+        paint: Paint()..color = const Color(0xFFFF0000),
+      ),
+      margin: const EdgeInsets.only(right: 48, bottom: 48),
+      onPressed: game.player.shoot,
+    );
+    add(fireButton);
   }}
 }}
 """

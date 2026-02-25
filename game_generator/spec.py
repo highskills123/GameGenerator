@@ -66,11 +66,20 @@ def _heuristic_spec(prompt: str) -> GameSpec:
     spec: GameSpec = {
         "title": title,
         "genre": genre,
+        "core_loop": _default_core_loop(genre),
         "mechanics": _default_mechanics(genre),
+        "entities": _default_entities(genre),
         "required_assets": _default_assets(genre),
         "screens": ["main_menu", "game", "game_over"],
         "controls": _default_controls(genre),
         "progression": _default_progression(genre),
+        "performance_hints": _default_performance_hints(genre),
+        "orientation": _default_orientation(genre),
+        "dimension": "2D",
+        "art_style": "pixel-art",
+        "platform": "android",
+        "scope": "prototype",
+        "online": False,
     }
     return spec
 
@@ -80,6 +89,28 @@ def _default_mechanics(genre: str) -> List[str]:
         "top_down_shooter": ["move", "shoot", "dodge", "collect_powerups"],
         "idle_rpg": ["auto_battle", "level_up", "upgrade_skills", "collect_resources"],
     }.get(genre, ["move"])
+
+
+def _default_core_loop(genre: str) -> str:
+    return {
+        "top_down_shooter": "Move ship → shoot enemies → survive waves → earn score",
+        "idle_rpg": "Idle auto-battle → earn gold → upgrade hero → face harder waves",
+    }.get(genre, "Play → earn rewards → progress")
+
+
+def _default_entities(genre: str) -> List[Dict[str, Any]]:
+    return {
+        "top_down_shooter": [
+            {"name": "Player", "role": "player", "attributes": {"speed": 200, "hp": 1}},
+            {"name": "Enemy", "role": "enemy", "attributes": {"speed": 100, "hp": 1}},
+            {"name": "Bullet", "role": "projectile", "attributes": {"speed": 400}},
+        ],
+        "idle_rpg": [
+            {"name": "Hero", "role": "player", "attributes": {"attack": 10, "level": 1}},
+            {"name": "Enemy", "role": "enemy", "attributes": {"hp": 50}},
+            {"name": "Gold", "role": "pickup", "attributes": {}},
+        ],
+    }.get(genre, [{"name": "Player", "role": "player", "attributes": {}}])
 
 
 def _default_assets(genre: str) -> List[str]:
@@ -107,6 +138,33 @@ def _default_progression(genre: str) -> Dict[str, Any]:
         "top_down_shooter": {"scoring": "points", "levels": 5, "difficulty_ramp": "wave"},
         "idle_rpg": {"scoring": "experience", "levels": 20, "prestige": False},
     }.get(genre, {"scoring": "points", "levels": 5})
+
+
+def _default_performance_hints(genre: str) -> List[str]:
+    base = [
+        "Preload all sprites in onLoad() using await loadSprite()",
+        "Avoid Vector2/Paint allocations inside update(double dt)",
+        "Use cached TextPaint objects for HUD text",
+        "Prefer RectangleHitbox for collision shapes",
+    ]
+    extra: Dict[str, List[str]] = {
+        "top_down_shooter": [
+            "Use BulletPool to avoid per-shot allocations",
+            "Consider broad-phase collision pruning for large enemy counts",
+        ],
+        "idle_rpg": [
+            "Batch UI updates; only redraw HUD when values change",
+        ],
+    }
+    return base + extra.get(genre, [])
+
+
+def _default_orientation(genre: str) -> str:
+    """Return the preferred screen orientation for the genre."""
+    return {
+        "top_down_shooter": "landscape",
+        "idle_rpg": "portrait",
+    }.get(genre, "portrait")
 
 
 def _ollama_spec(prompt: str, translator: Any) -> Optional[GameSpec]:
