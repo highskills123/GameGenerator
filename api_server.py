@@ -440,22 +440,16 @@ def generate_game():
     """
     Generate a complete Flutter/Flame game project ZIP.
 
-    Request body:
+    Request body (all fields except "prompt" are optional):
     {
-        "prompt":          "top down space shooter",   // required
-        "platform":        "android",                  // optional, default "android"
-        "scope":           "prototype",                // optional, default "prototype"
-        "art_style":       "pixel-art",                // optional
-        "validate":        false,                      // optional, run validation pipeline
-        "auto_fix":        false,                      // optional, apply patches on failure
-        "smoke_test":      false,                      // optional, run smoke test
-        "smoke_test_mode": "test"                      // optional, "test" or "build"
-    }
-
-    Response:
-    {
-        "success": true,
-        "zip_path": "/tmp/aibase_game_xxxxx/game.zip"
+        "prompt":          "top down space shooter",
+        "platform":        "android",
+        "scope":           "prototype",
+        "art_style":       "pixel-art",
+        "validate":        false,
+        "auto_fix":        false,
+        "smoke_test":      false,
+        "smoke_test_mode": "test"
     }
     """
     import os
@@ -487,8 +481,8 @@ def generate_game():
         zip_path = os.path.join(tmp_dir, 'game.zip')
 
         from orchestrator.orchestrator import Orchestrator
-        orchestrator = Orchestrator(interactive=False)
-        orchestrator.run(
+        orch = Orchestrator(interactive=False)
+        orch.run(
             prompt=prompt,
             output_zip=zip_path,
             platform=platform,
@@ -516,6 +510,10 @@ def not_found(e):
         'success': False,
         'error': 'Endpoint not found'
     }), 404
+
+
+@app.errorhandler(500)
+def internal_error(e):
     """Handle 500 errors."""
     return jsonify({
         'success': False,

@@ -61,12 +61,12 @@ class Orchestrator:
             assets_dir:           Optional local assets folder.
             platform:             "android" or "android+ios".
             scope:                "prototype" or "vertical-slice".
-            auto_fix:             Apply deterministic patches and re-run validation
-                                  (implies run_validation=True).
-            run_validation:       Run ``flutter pub get`` + ``dart format`` +
-                                  ``flutter analyze``.
+            auto_fix:             Re-run validation after patching (implies
+                                  run_validation=True).
+            run_validation:       Run ``flutter pub get`` + ``flutter analyze``.
             smoke_test:           Run an optional smoke test after analysis
                                   (``flutter test`` or ``flutter build apk --debug``).
+                                  Opt-in; not enabled by default.
             smoke_test_mode:      ``"test"`` (default) or ``"build"``.
             translator:           Optional AibaseTranslator for Ollama spec.
             constraint_overrides: Extra constraints from the caller.

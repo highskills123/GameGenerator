@@ -62,14 +62,14 @@ Examples:
 
     # Validation flags
     parser.add_argument("--validate", action="store_true",
-                        help="Run flutter pub get + dart format + flutter analyze after scaffolding")
+                        help="Run flutter pub get + flutter analyze after scaffolding")
     parser.add_argument("--auto-fix", dest="auto_fix", action="store_true",
-                        help="Apply deterministic patches and re-run validation on failure (implies --validate)")
+                        help="Re-run validation and patch on failure (implies --validate)")
     parser.add_argument("--smoke-test", dest="smoke_test", action="store_true",
-                        help="Run an optional smoke test after validation (opt-in; requires --validate or --auto-fix)")
+                        help="Run an optional smoke test after validation: flutter test or flutter build apk --debug (opt-in)")
     parser.add_argument("--smoke-test-mode", dest="smoke_test_mode",
                         choices=["test", "build"], default="test",
-                        help="Smoke test mode: 'test' (flutter test) or 'build' (flutter build apk --debug) (default: test)")
+                        help="Smoke test command: 'test' (flutter test) or 'build' (flutter build apk --debug) (default: test)")
 
     # UX flags
     parser.add_argument("--interactive", action="store_true",
