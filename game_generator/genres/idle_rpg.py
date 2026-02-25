@@ -10,12 +10,22 @@ When the spec contains a ``design_doc_data`` key (a dict produced by
 generator also writes:
   - ``assets/data/quests.json``
   - ``assets/data/characters.json``
+  - ``assets/data/enemies.json``
   - ``assets/data/items.json``      (if items list is present)
   - ``assets/data/locations.json``  (if locations list is present)
-and wires three Flutter UI screens into a bottom-navigation main.dart:
+and wires five Flutter UI screens into a bottom-navigation main.dart:
   - ``lib/screens/quest_log_screen.dart``
   - ``lib/screens/characters_screen.dart``
   - ``lib/screens/shop_screen.dart``
+  - ``lib/screens/combat_screen.dart``
+  - ``lib/screens/settings_screen.dart``
+
+Game mechanics included:
+  - Idle auto-battle loop with configurable tick rate
+  - Offline progress catch-up on game resume
+  - Three upgrade categories (Combat, Defence, Economy) with cost scaling
+  - Save/load persistence via SharedPreferences
+  - Enemy roster loaded from assets/data/enemies.json
 """
 
 from __future__ import annotations
@@ -38,13 +48,15 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/game/game.dart"] = _game_dart(safe_name)
     files["lib/game/hero.dart"] = _hero_dart(safe_name)
     files["lib/game/enemy.dart"] = _enemy_dart(safe_name)
-    files["lib/game/idle_manager.dart"] = _idle_manager_dart(safe_name)
+    files["lib/game/idle_manager.dart"] = _idle_manager_dart(safe_name, design_doc)
     files["lib/game/hud.dart"] = _hud_dart(safe_name)
     files["lib/game/upgrade_overlay.dart"] = _upgrade_overlay_dart(safe_name)
+    files["lib/game/save_manager.dart"] = _save_manager_dart()
 
     # JSON data files (always generated; populated from design doc when available)
     files["assets/data/quests.json"] = _quests_json(design_doc)
     files["assets/data/characters.json"] = _characters_json(design_doc)
+    files["assets/data/enemies.json"] = _enemies_json(design_doc)
     if design_doc is None or design_doc.get("items"):
         files["assets/data/items.json"] = _items_json(design_doc)
     if design_doc is None or design_doc.get("locations"):
@@ -54,6 +66,8 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     files["lib/screens/quest_log_screen.dart"] = _quest_log_screen_dart(title)
     files["lib/screens/characters_screen.dart"] = _characters_screen_dart(title)
     files["lib/screens/shop_screen.dart"] = _shop_screen_dart(title)
+    files["lib/screens/combat_screen.dart"] = _combat_screen_dart(title)
+    files["lib/screens/settings_screen.dart"] = _settings_screen_dart(title)
 
     # Custom main.dart with bottom-navigation layout
     orientation = spec.get("orientation", "portrait")
@@ -77,6 +91,7 @@ import 'enemy.dart';
 import 'idle_manager.dart';
 import 'hud.dart';
 import 'upgrade_overlay.dart';
+import 'save_manager.dart';
 
 class {name}Game extends FlameGame with TapCallbacks {{
   // Game state
@@ -85,16 +100,22 @@ class {name}Game extends FlameGame with TapCallbacks {{
   bool _gameOver = false;
 
   late final GameHero hero;
-  late final GameEnemy enemy;
+  late GameEnemy enemy;
   late final IdleManager idleManager;
+  late final SaveManager saveManager;
 
   @override
   Future<void> onLoad() async {{
     await super.onLoad();
 
+    // Save manager (load persisted state)
+    saveManager = SaveManager();
+    await saveManager.load();
+    gold = saveManager.gold;
+    wave = saveManager.wave;
+
     // Background
-    final bgSprite = await loadSprite('imported/background.png');
-    add(SpriteComponent(sprite: bgSprite, size: size));
+    add(RectangleComponent(size: size, paint: Paint()..color = const Color(0xFF1a1a2e)));
 
     // Hero
     hero = GameHero(game: this);
@@ -119,6 +140,12 @@ class {name}Game extends FlameGame with TapCallbacks {{
     );
   }}
 
+  @override
+  void onRemove() {{
+    saveManager.save(gold: gold, wave: wave);
+    super.onRemove();
+  }}
+
   /// Called when the player taps the screen (bonus damage).
   @override
   void onTapDown(TapDownEvent event) {{
@@ -131,6 +158,7 @@ class {name}Game extends FlameGame with TapCallbacks {{
     if (enemy.hp <= 0) {{
       gold += wave * 10;
       wave++;
+      saveManager.save(gold: gold, wave: wave);
       _respawnEnemy();
       overlays.add('Upgrade');
     }}
@@ -151,18 +179,22 @@ import 'package:flame/components.dart';
 import 'enemy.dart';
 import 'game.dart';
 
-class GameHero extends SpriteComponent {{
+class GameHero extends PositionComponent {{
   final {name}Game game;
 
   int level = 1;
+  int defenceLevel = 1;
+  int economyLevel = 1;
   int attackPower = 10;
   int tapDamage = 5;
+  int maxHp = 100;
+  int hp = 100;
+  double goldMultiplier = 1.0;
 
   GameHero({{required this.game}}) : super(size: Vector2(64, 64));
 
   @override
   Future<void> onLoad() async {{
-    sprite = await game.loadSprite('imported/hero.png');
     position = Vector2(game.size.x * 0.25 - 32, game.size.y * 0.5 - 32);
   }}
 
@@ -170,10 +202,24 @@ class GameHero extends SpriteComponent {{
     target.takeDamage(attackPower + bonus);
   }}
 
-  void levelUp() {{
+  /// Combat upgrade: increase attack power.
+  void upgradeAttack() {{
     level++;
     attackPower = (attackPower * 1.5).round();
     tapDamage = (tapDamage * 1.3).round();
+  }}
+
+  /// Defence upgrade: increase max HP.
+  void upgradeDefence() {{
+    defenceLevel++;
+    maxHp = (maxHp * 1.25).round();
+    hp = maxHp; // restore to full on upgrade
+  }}
+
+  /// Economy upgrade: increase gold earnings.
+  void upgradeEconomy() {{
+    economyLevel++;
+    goldMultiplier *= 1.25;
   }}
 }}
 """
@@ -182,21 +228,22 @@ class GameHero extends SpriteComponent {{
 def _enemy_dart(name: str) -> str:
     return f"""\
 import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
 import 'game.dart';
 
-class GameEnemy extends SpriteComponent {{
+class GameEnemy extends RectangleComponent {{
   final {name}Game game;
   final int wave;
 
   late int maxHp;
   late int hp;
+  String enemyName = 'Enemy';
 
   GameEnemy({{required this.game, required this.wave}})
-      : super(size: Vector2(64, 64));
+      : super(size: Vector2(64, 64), paint: Paint()..color = Colors.red);
 
   @override
   Future<void> onLoad() async {{
-    sprite = await game.loadSprite('imported/enemy.png');
     position = Vector2(game.size.x * 0.65 - 32, game.size.y * 0.5 - 32);
     maxHp = 50 + wave * 20;
     hp = maxHp;
@@ -204,24 +251,56 @@ class GameEnemy extends SpriteComponent {{
 
   void takeDamage(int amount) {{
     hp = (hp - amount).clamp(0, maxHp);
+    paint = Paint()
+      ..color = Color.lerp(Colors.red, Colors.orange, 1 - hp / maxHp)!;
   }}
 }}
 """
 
 
-def _idle_manager_dart(name: str) -> str:
+def _idle_manager_dart(name: str, design_doc: Optional[Dict[str, Any]] = None) -> str:
+    # Use tick rate from first idle_loop in design doc if available
+    tick_rate = 1.0
+    if design_doc:
+        loops = design_doc.get("idle_loops") or []
+        for loop in loops:
+            if loop.get("resource") == "combat_progress":
+                tick_rate = float(loop.get("tick_rate_seconds", 1.0))
+                break
     return f"""\
 import 'package:flame/components.dart';
 import 'game.dart';
 
 /// Automatically attacks the current enemy on a fixed interval.
+/// Also handles offline progress catch-up when the game resumes.
 class IdleManager extends Component {{
   final {name}Game game;
 
-  static const double _attackInterval = 1.0;
+  static const double _attackInterval = {tick_rate};
   double _timer = 0;
 
   IdleManager({{required this.game}});
+
+  @override
+  void onMount() {{
+    super.onMount();
+    _applyCatchUp();
+  }}
+
+  /// Simulate ticks that occurred while the game was closed.
+  void _applyCatchUp() {{
+    final lastSave = game.saveManager.lastSaveTime;
+    if (lastSave == 0) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = (nowMs - lastSave) / 1000.0;
+    // Cap catch-up at 8 hours to avoid extreme values
+    final cappedElapsed = elapsed.clamp(0, 8 * 3600).toDouble();
+    final catchUpTicks = (cappedElapsed / _attackInterval).floor();
+    if (catchUpTicks > 0) {{
+      final catchUpGold = (catchUpTicks * game.hero.attackPower * 0.1).round();
+      game.gold += catchUpGold;
+    }}
+  }}
 
   @override
   void update(double dt) {{
@@ -272,16 +351,42 @@ def _upgrade_overlay_dart(name: str) -> str:
 import 'package:flutter/material.dart';
 import 'game.dart';
 
-class UpgradeOverlay extends StatelessWidget {{
+class UpgradeOverlay extends StatefulWidget {{
   final {name}Game game;
 
   const UpgradeOverlay({{required this.game, super.key}});
 
   @override
+  State<UpgradeOverlay> createState() => _UpgradeOverlayState();
+}}
+
+class _UpgradeOverlayState extends State<UpgradeOverlay> {{
+  {name}Game get game => widget.game;
+
+  /// Cost for an upgrade at the given level (exponential scaling).
+  int _upgradeCost(int baseGold, int currentLevel) =>
+      (baseGold * (1.5 * currentLevel)).round();
+
+  bool _canAfford(int cost) => game.gold >= cost;
+
+  void _buy(int cost, VoidCallback apply) {{
+    if (!_canAfford(cost)) return;
+    setState(() {{
+      game.gold -= cost;
+      apply();
+    }});
+  }}
+
+  @override
   Widget build(BuildContext context) {{
+    final combatCost = _upgradeCost(100, game.hero.level);
+    final defenceCost = _upgradeCost(80, game.hero.defenceLevel);
+    final economyCost = _upgradeCost(120, game.hero.economyLevel);
+
     return Center(
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.symmetric(horizontal: 24),
         decoration: BoxDecoration(
           color: Colors.black87,
           borderRadius: BorderRadius.circular(16),
@@ -293,35 +398,93 @@ class UpgradeOverlay extends StatelessWidget {{
               'Wave ${{game.wave - 1}} Complete!',
               style: const TextStyle(
                 color: Colors.amber,
-                fontSize: 28,
+                fontSize: 26,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             Text(
               'Gold: ${{game.gold}}',
-              style: const TextStyle(color: Colors.white, fontSize: 20),
+              style: const TextStyle(color: Colors.white, fontSize: 18),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {{
-                game.hero.levelUp();
-                game.overlays.remove('Upgrade');
-              }},
-              child: Text(
-                'Level Up Hero (Lv.${{game.hero.level + 1}})',
-              ),
+            const Divider(color: Colors.white24, height: 24),
+            // Combat upgrade
+            _UpgradeButton(
+              label: '⚔ Combat (Lv.${{game.hero.level + 1}})',
+              description: 'Attack +50%',
+              cost: combatCost,
+              canAfford: _canAfford(combatCost),
+              onTap: () => _buy(combatCost, () => game.hero.upgradeAttack()),
             ),
             const SizedBox(height: 8),
+            // Defence upgrade
+            _UpgradeButton(
+              label: '🛡 Defence (Lv.${{game.hero.defenceLevel + 1}})',
+              description: 'HP +25%',
+              cost: defenceCost,
+              canAfford: _canAfford(defenceCost),
+              onTap: () => _buy(defenceCost, () => game.hero.upgradeDefence()),
+            ),
+            const SizedBox(height: 8),
+            // Economy upgrade
+            _UpgradeButton(
+              label: '💰 Economy (Lv.${{game.hero.economyLevel + 1}})',
+              description: 'Gold per wave +25%',
+              cost: economyCost,
+              canAfford: _canAfford(economyCost),
+              onTap: () => _buy(economyCost, () => game.hero.upgradeEconomy()),
+            ),
+            const SizedBox(height: 12),
             TextButton(
               onPressed: () => game.overlays.remove('Upgrade'),
               child: const Text(
-                'Continue',
-                style: TextStyle(color: Colors.white70),
+                'Continue →',
+                style: TextStyle(color: Colors.white70, fontSize: 16),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }}
+}}
+
+class _UpgradeButton extends StatelessWidget {{
+  final String label;
+  final String description;
+  final int cost;
+  final bool canAfford;
+  final VoidCallback onTap;
+
+  const _UpgradeButton({{
+    required this.label,
+    required this.description,
+    required this.cost,
+    required this.canAfford,
+    required this.onTap,
+  }});
+
+  @override
+  Widget build(BuildContext context) {{
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: canAfford ? Colors.amber[800] : Colors.grey[700],
+        foregroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(48),
+      ),
+      onPressed: canAfford ? onTap : null,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(description, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            ],
+          ),
+          Text('$cost 🪙', style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }}
@@ -426,6 +589,80 @@ def _locations_json(design_doc: Optional[Dict[str, Any]]) -> str:
     if not locations:
         locations = _DEFAULT_LOCATIONS
     return json.dumps(locations, indent=2)
+
+
+_DEFAULT_ENEMIES: List[Dict[str, Any]] = [
+    {
+        "name": "Goblin Scout",
+        "type": "humanoid",
+        "description": "A small but nimble creature that attacks in packs.",
+        "abilities": ["Quick Strike"],
+        "loot": ["5 gold"],
+    },
+    {
+        "name": "Orc Warrior",
+        "type": "humanoid",
+        "description": "A brutish orc with thick armour and a heavy axe.",
+        "abilities": ["Power Slam", "Battle Cry"],
+        "loot": ["20 gold", "Iron Helm"],
+    },
+    {
+        "name": "Cave Troll",
+        "type": "beast",
+        "description": "A regenerating brute that guards deep dungeon passages.",
+        "abilities": ["Regeneration", "Boulder Throw"],
+        "loot": ["50 gold", "Troll Hide"],
+    },
+]
+
+
+def _enemies_json(design_doc: Optional[Dict[str, Any]]) -> str:
+    enemies = (design_doc.get("enemies") or []) if design_doc else _DEFAULT_ENEMIES
+    if not enemies:
+        enemies = _DEFAULT_ENEMIES
+    return json.dumps(enemies, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Save manager Dart file
+# ---------------------------------------------------------------------------
+
+
+def _save_manager_dart() -> str:
+    return """\
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Persists and loads game state using SharedPreferences.
+class SaveManager {
+  int gold = 0;
+  int wave = 1;
+  int lastSaveTime = 0;
+
+  Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    gold = prefs.getInt('save_gold') ?? 0;
+    wave = prefs.getInt('save_wave') ?? 1;
+    lastSaveTime = prefs.getInt('save_timestamp') ?? 0;
+  }
+
+  Future<void> save({required int gold, required int wave}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('save_gold', gold);
+    await prefs.setInt('save_wave', wave);
+    await prefs.setInt('save_timestamp', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<void> reset() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('save_gold');
+    await prefs.remove('save_wave');
+    await prefs.remove('save_timestamp');
+    gold = 0;
+    wave = 1;
+    lastSaveTime = 0;
+  }
+}
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +1002,265 @@ class _ShopScreenState extends State<ShopScreen> {{
 
 
 # ---------------------------------------------------------------------------
+# Combat and Settings screen generators
+# ---------------------------------------------------------------------------
+
+
+def _combat_screen_dart(title: str) -> str:
+    return f"""\
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+/// Displays the enemy encounter list loaded from assets/data/enemies.json.
+class CombatScreen extends StatefulWidget {{
+  const CombatScreen({{super.key}});
+
+  @override
+  State<CombatScreen> createState() => _CombatScreenState();
+}}
+
+class _CombatScreenState extends State<CombatScreen> {{
+  List<Map<String, dynamic>> _enemies = [];
+  bool _loading = true;
+
+  @override
+  void initState() {{
+    super.initState();
+    _loadEnemies();
+  }}
+
+  Future<void> _loadEnemies() async {{
+    final str = await rootBundle.loadString('assets/data/enemies.json');
+    final list = jsonDecode(str) as List;
+    setState(() {{
+      _enemies = list.cast<Map<String, dynamic>>();
+      _loading = false;
+    }});
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Enemies'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+      ),
+      backgroundColor: Colors.grey[900],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+          : _enemies.isEmpty
+              ? const Center(
+                  child: Text('No enemies found.',
+                      style: TextStyle(color: Colors.white54)))
+              : ListView.builder(
+                  itemCount: _enemies.length,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemBuilder: (context, index) {{
+                    final e = _enemies[index];
+                    final abilities =
+                        (e['abilities'] as List?)?.join(', ') ?? '';
+                    final loot = (e['loot'] as List?)?.join(', ') ?? '';
+                    return Card(
+                      color: Colors.red[900],
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: ListTile(
+                        leading: const Icon(Icons.dangerous,
+                            color: Colors.amber, size: 32),
+                        title: Text(
+                          e['name'] as String? ?? '',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e['description'] as String? ?? '',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            if (abilities.isNotEmpty)
+                              Text('Abilities: $abilities',
+                                  style: const TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12)),
+                            if (loot.isNotEmpty)
+                              Text('Loot: $loot',
+                                  style: const TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 11)),
+                          ],
+                        ),
+                        isThreeLine: abilities.isNotEmpty,
+                        trailing: e['type'] != null
+                            ? Chip(
+                                label: Text(
+                                  e['type'] as String,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                backgroundColor: Colors.black54,
+                              )
+                            : null,
+                      ),
+                    );
+                  }},
+                ),
+    );
+  }}
+}}
+"""
+
+
+def _settings_screen_dart(title: str) -> str:
+    return f"""\
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Settings screen: view game info and reset save data.
+class SettingsScreen extends StatefulWidget {{
+  const SettingsScreen({{super.key}});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}}
+
+class _SettingsScreenState extends State<SettingsScreen> {{
+  int _savedGold = 0;
+  int _savedWave = 1;
+
+  @override
+  void initState() {{
+    super.initState();
+    _loadSaveInfo();
+  }}
+
+  Future<void> _loadSaveInfo() async {{
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {{
+      _savedGold = prefs.getInt('save_gold') ?? 0;
+      _savedWave = prefs.getInt('save_wave') ?? 1;
+    }});
+  }}
+
+  Future<void> _resetSave() async {{
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Reset Save?',
+            style: TextStyle(color: Colors.amber)),
+        content: const Text(
+          'All progress will be lost. This cannot be undone.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {{
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('save_gold');
+      await prefs.remove('save_wave');
+      await prefs.remove('save_timestamp');
+      _loadSaveInfo();
+      if (mounted) {{
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Save data reset.')),
+        );
+      }}
+    }}
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.amber,
+      ),
+      backgroundColor: Colors.grey[900],
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            color: Colors.grey[800],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Save Data',
+                      style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('Gold: $_savedGold',
+                      style: const TextStyle(color: Colors.white70)),
+                  Text('Wave: $_savedWave',
+                      style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: Colors.grey[800],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('About',
+                      style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('{title}',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
+                  const Text('Generated by Aibase – Idle RPG Generator',
+                      style: TextStyle(color: Colors.white54, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[800],
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
+            ),
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('Reset Save Data'),
+            onPressed: _resetSave,
+          ),
+        ],
+      ),
+    );
+  }}
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
 # main.dart with bottom-navigation layout
 # ---------------------------------------------------------------------------
 
@@ -788,6 +1284,8 @@ import 'game/game.dart';
 import 'screens/quest_log_screen.dart';
 import 'screens/characters_screen.dart';
 import 'screens/shop_screen.dart';
+import 'screens/combat_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() async {{
   WidgetsFlutterBinding.ensureInitialized();
@@ -821,6 +1319,8 @@ class _{name}AppState extends State<{name}App> {{
       const QuestLogScreen(),
       const CharactersScreen(),
       const ShopScreen(),
+      const CombatScreen(),
+      const SettingsScreen(),
     ];
   }}
 
@@ -841,6 +1341,7 @@ class _{name}AppState extends State<{name}App> {{
           selectedItemColor: Colors.amber,
           unselectedItemColor: Colors.white38,
           currentIndex: _selectedIndex,
+          type: BottomNavigationBarType.fixed,
           onTap: (i) => setState(() => _selectedIndex = i),
           items: const [
             BottomNavigationBarItem(
@@ -851,6 +1352,10 @@ class _{name}AppState extends State<{name}App> {{
                 icon: Icon(Icons.people), label: 'Heroes'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.store), label: 'Shop'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.dangerous), label: 'Enemies'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.settings), label: 'Settings'),
           ],
         ),
       ),

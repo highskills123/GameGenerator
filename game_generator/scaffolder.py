@@ -182,6 +182,7 @@ dependencies:
   flutter:
     sdk: flutter
   flame: ^1.18.0
+  shared_preferences: ^2.2.0
 
 flutter:
   uses-material-design: true
