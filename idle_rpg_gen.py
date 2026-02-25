@@ -12,15 +12,17 @@ natural-language prompt in a single command:
 
 Usage
 -----
-    idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom" \\
-                 --out my_idle_rpg.zip
+    # Minimal – output filename is auto-generated
+    idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom"
+
+    # Explicit output path
+    idle-rpg-gen --prompt "A dark fantasy idle RPG" --out my_idle_rpg.zip
 
     # Offline / deterministic (no Ollama required):
-    idle-rpg-gen --prompt "space colony idle RPG" --out game.zip --seed 42
+    idle-rpg-gen --prompt "space colony idle RPG" --seed 42
 
     # Specify Ollama model:
-    idle-rpg-gen --prompt "sci-fi idle RPG" --out game.zip \\
-                 --ollama-model qwen2.5-coder:7b
+    idle-rpg-gen --prompt "sci-fi idle RPG" --ollama-model qwen2.5-coder:7b
 
 Prerequisites
 -------------
@@ -29,6 +31,7 @@ Prerequisites
 """
 
 import argparse
+import re
 import sys
 
 from colorama import Fore, Style, init
@@ -52,7 +55,8 @@ Examples:
 
     # Required
     parser.add_argument("--prompt", required=True, help="Natural-language Idle RPG description")
-    parser.add_argument("--out", required=True, help="Output ZIP file path")
+    parser.add_argument("--out", default=None,
+                        help="Output ZIP file path (default: auto-generated from prompt)")
 
     # Optional generation flags
     parser.add_argument("--platform", default="android",
