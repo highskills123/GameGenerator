@@ -31,6 +31,7 @@ After installation, the following CLI commands are available:
 |---------|-------------|
 | `gamegen` | Flutter/Flame game generator (main entry point) |
 | `gamedesign-agent` | AI Game Design Assistant |
+| `idle-rpg-gen` | **One-shot Idle RPG game generator** (design doc + full project) |
 
 ```bash
 # Generate a game project
@@ -38,7 +39,93 @@ gamegen --prompt "top down space shooter" --out game.zip
 
 # Launch the AI Design Assistant
 gamedesign-agent
+
+# One-shot Idle RPG: generate design doc + Flutter project in one command
+idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom" --out my_idle_rpg.zip
 ```
+
+## One-Shot Idle RPG Generator
+
+Generate a **complete, runnable Idle RPG game** from a single natural-language
+prompt.  One command does everything:
+
+1. **Design document** – generated via Ollama (when available) or a deterministic
+   template fallback (fully offline, no paid APIs required).
+2. **Flutter/Flame project** – idle auto-battle, upgrades, quests, enemies, save/load.
+3. **ZIP archive** – ready to unzip, `flutter pub get`, and run.
+
+### Quick Start (offline, no Ollama)
+
+```bash
+pip install -e .
+idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom" \
+             --out my_idle_rpg.zip
+```
+
+### Quick Start (with Ollama for AI-generated content)
+
+```bash
+# Prerequisites: install and start Ollama, pull the model
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5-coder:7b
+ollama serve
+
+pip install -e ".[ollama]"
+idle-rpg-gen --prompt "A sci-fi space colony idle RPG" \
+             --out space_colony.zip \
+             --ollama-model qwen2.5-coder:7b
+```
+
+### Deterministic / Seeded Generation
+
+Use `--seed` to make the generated content reproducible:
+
+```bash
+idle-rpg-gen --prompt "cursed kingdom idle RPG" --out game.zip --seed 42
+```
+
+### Run the Generated Project
+
+```bash
+# Prerequisites: Flutter SDK ≥ 3.10
+unzip my_idle_rpg.zip -d my_idle_rpg
+cd my_idle_rpg
+flutter pub get
+flutter run
+```
+
+### Design Document Formats
+
+| Flag | Format | Default path |
+|------|--------|--------------|
+| *(none / default)* | JSON | `assets/design/design.json` |
+| `--design-doc-format md` | Markdown | `DESIGN.md` |
+
+### Full CLI reference
+
+```
+idle-rpg-gen --help
+```
+
+### Using `gamegen --idle-rpg` (alternative)
+
+The same functionality is also accessible via the `gamegen` entry point:
+
+```bash
+gamegen --prompt "A cursed kingdom idle RPG" --out game.zip --idle-rpg
+gamegen --prompt "sci-fi idle RPG" --out game.zip --idle-rpg --seed 42
+```
+
+### Generated project features
+
+| Feature | Details |
+|---------|---------|
+| Idle auto-battle | Configurable tick rate; offline progress catch-up on resume |
+| Upgrade system | 3 categories – Combat, Defence, Economy – with cost scaling |
+| Combat / encounters | Enemy roster from design doc (`assets/data/enemies.json`) |
+| Quests | Loaded from `assets/data/quests.json` (design-doc sourced) |
+| Save / load | Persisted via `SharedPreferences`; reset option in Settings |
+| UI screens | Battle · Quests · Heroes · Shop · Enemies · Settings |
 
 ## Features
 

@@ -44,13 +44,14 @@ all = [
 [project.scripts]
 gamedesign-agent = "gamedesign_agent.cli:main"
 gamegen = "gamegen:main"
+idle-rpg-gen = "idle_rpg_gen:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gamedesign_agent*"]
 
 [tool.setuptools]
-py-modules = ["gamegen"]
+py-modules = ["gamegen", "idle_rpg_gen"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

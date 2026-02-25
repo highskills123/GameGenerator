@@ -50,6 +50,8 @@ class Orchestrator:
         ollama_max_tokens: Optional[int] = None,
         ollama_timeout: Optional[int] = None,
         ollama_seed: Optional[int] = None,
+        idle_rpg: bool = False,
+        seed: Optional[int] = None,
         run_tracker: Optional[RunTracker] = None,
     ) -> None:
         """
@@ -79,6 +81,13 @@ class Orchestrator:
             ollama_max_tokens:    Max tokens to generate.
             ollama_timeout:       HTTP request timeout in seconds.
             ollama_seed:          Random seed for reproducibility.
+            idle_rpg:             When True, run the one-shot Idle RPG generator
+                                  (forces design_doc=True and genre=idle_rpg;
+                                  falls back to template-based design doc when
+                                  Ollama is unavailable).
+            seed:                 Global RNG seed for deterministic output.
+                                  Applied to the template fallback when Ollama
+                                  is unavailable.
             run_tracker:          Optional :class:`RunTracker` for structured
                                   logging and progress events.
         """
@@ -87,6 +96,13 @@ class Orchestrator:
         from game_generator.asset_importer import import_assets
         from game_generator.zip_exporter import export_to_zip
         from workers.validator import ValidatorWorker
+
+        # --idle-rpg implies design_doc and forces idle_rpg genre
+        if idle_rpg:
+            design_doc = True
+            if constraint_overrides is None:
+                constraint_overrides = {}
+            constraint_overrides["genre_override"] = "idle_rpg"
 
         # Convenience helper – emit event + print only when tracker is present
         def _emit(stage: str, message: str, percent: Optional[int] = None) -> None:
@@ -109,6 +125,10 @@ class Orchestrator:
         print("[1/4] Generating game spec …")
         _emit("spec", "Generating game spec …", percent=10)
         spec = generate_spec(prompt, translator=translator)
+        # Apply genre override from --idle-rpg
+        genre_override = (constraint_overrides or {}).pop("genre_override", None)
+        if genre_override:
+            spec["genre"] = genre_override
         # Merge constraints into spec so downstream workers can read them.
         spec.update(
             {
@@ -131,10 +151,12 @@ class Orchestrator:
         if design_doc:
             from game_generator.ai.design_assistant import (
                 generate_idle_rpg_design,
+                generate_idle_rpg_design_template,
                 design_doc_to_markdown,
             )
-            print("[1b]  Generating Idle RPG design document via Ollama …")
+            print("[1b]  Generating Idle RPG design document …")
             _emit("design_doc", "Generating Idle RPG design document …", percent=25)
+            doc = None
             try:
                 doc = generate_idle_rpg_design(
                     prompt,
@@ -145,7 +167,24 @@ class Orchestrator:
                     timeout=ollama_timeout,
                     seed=ollama_seed,
                 )
-            except (RuntimeError, ValueError) as exc:
+                print("      Design document generated via Ollama.")
+            except (RuntimeError, ImportError) as exc:
+                if idle_rpg:
+                    # Ollama unavailable – fall back to template
+                    print(
+                        f"      [WARNING] Ollama unavailable ({exc}); "
+                        "using template-based design doc."
+                    )
+                    _emit("design_doc", "Ollama unavailable; using template fallback.", percent=28)
+                    fallback_seed = seed if seed is not None else (ollama_seed if ollama_seed is not None else None)
+                    doc = generate_idle_rpg_design_template(prompt, seed=fallback_seed)
+                else:
+                    import sys
+                    print(f"[ERROR] Design document generation failed: {exc}")
+                    if run_tracker is not None:
+                        run_tracker.error(f"Design document generation failed: {exc}")
+                    sys.exit(1)
+            except ValueError as exc:
                 import sys
                 print(f"[ERROR] Design document generation failed: {exc}")
                 if run_tracker is not None:

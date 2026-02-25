@@ -108,6 +108,17 @@ Examples:
     parser.add_argument("--ollama-seed", dest="ollama_seed", type=int,
                         help="Random seed for design doc generation")
 
+    # One-shot Idle RPG generator
+    parser.add_argument("--idle-rpg", dest="idle_rpg", action="store_true",
+                        help=(
+                            "One-shot Idle RPG generator: generate design doc + "
+                            "complete Flutter/Flame project end-to-end. "
+                            "Uses Ollama when available; falls back to a template "
+                            "design doc so the command works fully offline."
+                        ))
+    parser.add_argument("--seed", dest="seed", type=int,
+                        help="Global RNG seed for deterministic offline content generation")
+
     return parser
 
 
@@ -117,6 +128,8 @@ def main() -> None:
 
     print(f"{Fore.CYAN}{'='*70}")
     print(f"{Fore.CYAN}Aibase – Flutter/Flame Game Generator")
+    if args.idle_rpg:
+        print(f"{Fore.CYAN}Mode: One-Shot Idle RPG Generator")
     print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
 
     # Optional Ollama translator
@@ -164,6 +177,8 @@ def main() -> None:
             ollama_max_tokens=args.ollama_max_tokens,
             ollama_timeout=args.ollama_timeout,
             ollama_seed=args.ollama_seed,
+            idle_rpg=args.idle_rpg,
+            seed=args.seed,
         )
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
