@@ -182,13 +182,7 @@ class Orchestrator:
                 success, logs = worker.validate(run_smoke_test=smoke_test, smoke_test_mode=smoke_test_mode)
                 if not success and auto_fix:
                     print("      Validation failed; attempting auto-fix …")
-                    project_files, applied_patches = worker.auto_fix(
-                        spec, logs, project_files,
-                        run_smoke_test=smoke_test,
-                        smoke_test_mode=smoke_test_mode,
-                    )
-                    if applied_patches:
-                        print(f"      Applied patches: {', '.join(applied_patches)}")
+                    project_files = worker.auto_fix(spec, logs, project_files)
                     worker.project_files = project_files
                     worker.write_files()
 

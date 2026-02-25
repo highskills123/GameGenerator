@@ -349,7 +349,7 @@ class ValidatorWorker:
         run_format: bool = True,
         run_smoke_test: bool = False,
         smoke_test_mode: str = "test",
-    ) -> Tuple[Dict[str, str], List[str]]:
+    ) -> Dict[str, str]:
         """
         Apply deterministic patches then re-run validation, up to ``MAX_RETRIES``.
 
@@ -362,7 +362,8 @@ class ValidatorWorker:
             smoke_test_mode:  Pass through to ``validate()``.
 
         Returns:
-            ``(final_project_files, all_applied_patch_names)``
+            ``final_project_files`` (patched file dict).
+            Applied patch names are printed to stdout and logged.
         """
         files = dict(project_files)
         all_applied: List[str] = []
@@ -391,8 +392,10 @@ class ValidatorWorker:
         else:
             logger.warning("Auto-fix exhausted %d retries.", self.MAX_RETRIES)
 
+        if all_applied:
+            print(f"      Applied patches: {', '.join(all_applied)}")
         logger.info("Applied patches: %s", all_applied)
-        return files, all_applied
+        return files
 
     # ------------------------------------------------------------------
     # Private helpers
