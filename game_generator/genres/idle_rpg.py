@@ -3617,10 +3617,10 @@ const Map<String, int> _kDiamondAmounts = {{
 }};
 
 const Map<String, String> _kFallbackPrices = {{
-  'diamonds_50':   '\u00240.99',
-  'diamonds_150':  '\u00242.99',
-  'diamonds_500':  '\u00247.99',
-  'diamonds_1200': '\u002417.99',
+  'diamonds_50':   '\\$0.99',
+  'diamonds_150':  '\\$2.99',
+  'diamonds_500':  '\\$7.99',
+  'diamonds_1200': '\\$17.99',
 }};
 
 class _StoreScreenState extends State<StoreScreen> {{
@@ -3747,7 +3747,7 @@ class _StoreScreenState extends State<StoreScreen> {{
                   child: !_available
                       ? const Center(
                           child: Text(
-                            'Store unavailable.\nConfigure product IDs in the Play Console / App Store Connect.',
+                            'Store unavailable.\\nConfigure product IDs in the Play Console / App Store Connect.',
                             style: TextStyle(
                                 color: Colors.white54, fontSize: 13),
                             textAlign: TextAlign.center,
@@ -3756,7 +3756,7 @@ class _StoreScreenState extends State<StoreScreen> {{
                       : _products.isEmpty
                           ? const Center(
                               child: Text(
-                                'No products found.\nEnsure product IDs match the store console.',
+                                'No products found.\\nEnsure product IDs match the store console.',
                                 style: TextStyle(
                                     color: Colors.white54, fontSize: 13),
                                 textAlign: TextAlign.center,
