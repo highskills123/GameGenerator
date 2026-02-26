@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """
-gamegen.py – Standalone CLI entry point for the Aibase Flutter/Flame Game Generator.
-
-This entry point complements the existing ``aibase.py --generate-game`` flag
-and exposes the full orchestrator pipeline with constraint resolution,
-validation, and auto-fix.
+gamegen.py – Standalone CLI entry point for the Flutter/Flame Game Generator.
 
 Usage
 -----
+    # Minimal – output filename is auto-generated from the prompt
+    python gamegen.py --prompt "top down space shooter"
+
+    # Explicit output path
     python gamegen.py --prompt "top down space shooter" --out game.zip
-    python gamegen.py --prompt "idle RPG with upgrades" \\
-        --assets-dir "C:\\\\Users\\\\me\\\\Desktop\\\\MyAssets" \\
-        --out my_game.zip --platform android --scope vertical-slice --auto-fix
+
+    # Idle RPG with AI content (requires Ollama)
+    python gamegen.py --prompt "idle RPG with upgrades" --idle-rpg \\
+        --ollama-model qwen2.5-coder:7b --out my_game.zip
 
     # Interactive constraint prompts
-    python gamegen.py --prompt "space shooter" --out game.zip --interactive
-
-    # AI-enhanced spec via Ollama
-    python gamegen.py --prompt "..." --out game.zip --model qwen2.5-coder:7b
+    python gamegen.py --prompt "space shooter" --interactive
 """
 
 import argparse
+import re
 import sys
 
 from colorama import Fore, Style, init
@@ -44,7 +43,8 @@ Examples:
 
     # Required
     parser.add_argument("--prompt", required=True, help="Natural-language game description")
-    parser.add_argument("--out", required=True, help="Output ZIP file path")
+    parser.add_argument("--out", default=None,
+                        help="Output ZIP file path (default: auto-generated from prompt)")
 
     # Optional generation flags
     parser.add_argument("--assets-dir", dest="assets_dir",
@@ -122,22 +122,33 @@ Examples:
     return parser
 
 
+def _auto_out(prompt: str) -> str:
+    """Derive a safe ZIP filename from the prompt."""
+    slug = re.sub(r"[^a-z0-9]+", "_", prompt.lower()).strip("_")
+    slug = (slug[:40].strip("_")) or "game"
+    return f"{slug}.zip"
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    # Auto-generate output filename when --out is omitted
+    if args.out is None:
+        args.out = _auto_out(args.prompt)
+
     print(f"{Fore.CYAN}{'='*70}")
-    print(f"{Fore.CYAN}Aibase – Flutter/Flame Game Generator")
+    print(f"{Fore.CYAN}Flutter/Flame Game Generator")
     if args.idle_rpg:
         print(f"{Fore.CYAN}Mode: One-Shot Idle RPG Generator")
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
+    print(f"{Fore.CYAN}Output: {args.out}{Style.RESET_ALL}\n")
 
     # Optional Ollama translator
     translator = None
     if args.model:
         try:
-            from aibase import AibaseTranslator
-            translator = AibaseTranslator(
+            from game_generator.ai.translator import OllamaTranslator
+            translator = OllamaTranslator(
                 model=args.model,
                 temperature=args.temperature,
                 max_tokens=args.max_tokens,

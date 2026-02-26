@@ -14,12 +14,47 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .constraint_resolver import ConstraintResolver
 from .run_tracker import RunTracker
 
 logger = logging.getLogger(__name__)
+
+
+def _enrich_spec_with_dialogue(
+    spec: Dict[str, Any],
+    design_doc: Dict[str, Any],
+    emit: Callable,
+) -> None:
+    """
+    Use GameDesignAgent to generate NPC dialogue for characters in the design doc
+    and store it in spec['dialogue_data'] for downstream generators.
+    Falls back silently when gamedesign_agent is unavailable.
+    """
+    characters = design_doc.get("characters", [])
+    if not characters:
+        return
+    try:
+        from gamedesign_agent.agent import GameDesignAgent
+        agent = GameDesignAgent(llm_backend="none")
+        dialogue: Dict[str, Any] = {}
+        for char in characters[:5]:  # limit to 5 NPCs to keep generation fast
+            name = char.get("name", "NPC")
+            role = char.get("role", "villager").lower()
+            # Map role to a recognised NPC type
+            npc_type = "villager"
+            for t in ("merchant", "guard", "wizard", "quest_giver", "enemy"):
+                if t in role:
+                    npc_type = t
+                    break
+            lines = agent.write_npc_dialogue(npc_type=npc_type, num_lines=3, seed=42)
+            dialogue[name] = {"role": char.get("role", ""), "lines": lines}
+        spec["dialogue_data"] = dialogue
+        emit("dialogue", f"Generated dialogue for {len(dialogue)} character(s).", percent=37)
+        logger.info("NPC dialogue generated for %d characters.", len(dialogue))
+    except Exception as exc:
+        logger.debug("GameDesignAgent dialogue enrichment skipped: %s", exc)
 
 
 class Orchestrator:
@@ -202,6 +237,9 @@ class Orchestrator:
             spec["design_doc_data"] = doc
             print(f"      Design doc will be written to: {resolved_design_doc_path}")
             _emit("design_doc", f"Design doc ready → {resolved_design_doc_path}", percent=35)
+
+            # ── 2c. Enrich spec with AI-generated NPC dialogue ───────────
+            _enrich_spec_with_dialogue(spec, doc, _emit)
 
         # ── 3–5. Scaffold, import assets, export ZIP ────────────────────
         with tempfile.TemporaryDirectory(prefix="aibase_game_") as tmp_dir:

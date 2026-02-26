@@ -1,14 +1,16 @@
-# Quick Start Guide
+# Quick Start – GameGenerator
+
+Generate a complete, runnable Flutter/Flame game from a single prompt in minutes.
+
+---
 
 ## 📋 Prerequisites (one-time setup)
 
-Before anything else, make sure you have these three things installed:
-
 | # | What | Download |
-|---|---|---|
+|---|------|---------|
 | 1 | **Python 3.9+** | https://www.python.org/downloads/ |
-| 2 | **Ollama** (runs AI models locally, free) | https://ollama.com |
-| 3 | **pip** (comes with Python) | — |
+| 2 | **Flutter SDK ≥ 3.10** | https://docs.flutter.dev/get-started/install |
+| 3 | **Ollama** *(optional – for AI-enhanced content)* | https://ollama.com |
 
 > **Windows tip:** when installing Python, tick ☑ "Add Python to PATH" in the installer.
 
@@ -16,165 +18,113 @@ Before anything else, make sure you have these three things installed:
 
 ## 📥 Step 1 — Get the code
 
-**Option A — Download ZIP (easiest, no git needed):**  
-👉 **https://github.com/highskills123/Aibase/archive/refs/heads/copilot/fix-ollama-integration.zip**
+**Option A — Download ZIP (easiest, no git needed):**
 
-1. Click the link above — a ZIP file downloads
-2. Right-click the ZIP → **Extract All** → choose a folder (e.g. `C:\Users\you\Aibase`)
-3. Open **Command Prompt** (Windows) or **Terminal** (Mac/Linux) and `cd` into the extracted folder:
+1. Go to https://github.com/highskills123/GameGenerator
+2. Click **Code → Download ZIP**
+3. Extract the ZIP to a folder (e.g. `C:\Users\you\GameGenerator`)
+4. Open a terminal and `cd` into that folder:
    ```
-   cd C:\Users\you\Aibase\Aibase-copilot-fix-ollama-integration
+   cd C:\Users\you\GameGenerator
    ```
-   > **Tip (Windows):** Open File Explorer, navigate into the Aibase folder, click the address bar, type `cmd`, press Enter — this opens Command Prompt already in the right folder.
+   > **Tip (Windows):** Open File Explorer, navigate into the folder, click the address bar, type `cmd`, press Enter.
 
 **Option B — git clone:**
-```
-git clone https://github.com/highskills123/Aibase.git
-cd Aibase
-git checkout copilot/fix-ollama-integration
+```bash
+git clone https://github.com/highskills123/GameGenerator.git
+cd GameGenerator
 ```
 
 ---
 
 ## 📦 Step 2 — Install Python dependencies
 
+```bash
+pip install -e .
 ```
-pip install -r requirements.txt
+
+To enable AI-enhanced content with Ollama:
+```bash
+pip install -e ".[ollama]"
 ```
 
 You only need to do this once.
 
 ---
 
-## 🚀 Step 3 — Start everything
+## 🚀 Step 3 — Generate your game
 
-### Recommended: one command does it all
+### Offline (no AI, works immediately)
 
-```
-python startollamaserver.py
-```
+```bash
+# Top-down space shooter
+gamegen --prompt "top down space shooter with asteroids" --out shooter.zip
 
-This single command:
-1. **Starts `ollama serve`** in the background (skips this if Ollama is already running)
-2. **Waits** until Ollama is ready
-3. **Pulls the AI model** automatically if you don't have it yet (`qwen2.5-coder:7b`, ~4 GB on first run)
-4. **Starts the Aibase web server** and opens a public **HTTPS URL** via ngrok
-
-The output will look like this:
-
-```
-  ✓  Ollama is ready
-  ✓  Model 'qwen2.5-coder:7b' is available
-
-  🌍 Public URL:   https://abc123.ngrok-free.app
-  Share this link with anyone — no router setup needed!
-
-  This computer:   http://localhost:5000/
-  Local network:   http://192.168.1.42:5000/
+# Idle RPG (template-based content, no Ollama needed)
+idle-rpg-gen --prompt "A dark fantasy idle RPG in a cursed kingdom" --out my_game.zip
 ```
 
-Open one of those URLs in your browser and start generating code!
+### With AI-enhanced content (requires Ollama)
 
-### Useful flags
+```bash
+# 1. Pull the AI model (one-time, ~4 GB)
+ollama pull qwen2.5-coder:7b
 
-| Command | What it does |
-|---|---|
-| `python startollamaserver.py` | Full stack — Ollama + HTTPS tunnel (default) |
-| `python startollamaserver.py --no-ngrok` | Local only — no public URL |
-| `python startollamaserver.py --port 8080` | Use a different port |
-| `python startollamaserver.py --no-pull` | Skip the automatic model download |
+# 2. Start Ollama
+ollama serve
+
+# 3. Generate with AI content
+idle-rpg-gen --prompt "A sci-fi space colony idle RPG" \
+             --out space_colony.zip \
+             --ollama-model qwen2.5-coder:7b
+```
 
 ---
 
-## 🔑 Step 4 — (Optional) Set up ngrok for a permanent URL
+## 📱 Step 4 — Run the game on Android
 
-By default ngrok gives you a random URL that changes every time. To get a **fixed URL** that stays the same:
+```bash
+# Unzip the generated project
+unzip my_game.zip -d my_game
+cd my_game
 
-1. Sign up free at https://ngrok.com
-2. Copy your authtoken from https://dashboard.ngrok.com/get-started/your-authtoken
-3. Copy `.env.example` to `.env`:
-   - **Windows:** `copy .env.example .env`
-   - **Mac/Linux:** `cp .env.example .env`
-4. Open `.env` in a text editor and fill in:
-   ```
-   NGROK_AUTHTOKEN=paste_your_token_here
-   ```
+# Install Flutter packages
+flutter pub get
 
-> Once you have an authtoken, ngrok also lets you reserve a **static domain** (free tier: 1 domain).  
-> Add it to `.env` as `NGROK_DOMAIN=your-reserved-domain.ngrok-free.app` and the URL will never change.
+# Connect an Android device (or start an emulator) and run
+flutter run
+```
 
----
-
-## 🌐 Step 5 — Use the web UI
-
-Open the URL printed by the launcher in any browser.
-
-- Type a description of what you want to build
-- Pick a language from the dropdown (Python, Flutter, React Native, JavaScript, …)
-- Click **Generate Code**
-- Copy or download the result
+The generated project includes **all required Android files** so `flutter run`
+works out of the box — no extra Android setup needed.
 
 ---
 
-## ⚠️ Keep the terminal open!
+## 💡 Common commands
 
-The public link **only works while the server is running**.  
-If you close the terminal window, the link returns a 404 error.  
-Just run `python startollamaserver.py` again to bring it back.
+| What you want | Command |
+|--------------|---------|
+| Top-down shooter | `gamegen --prompt "space shooter" --out game.zip` |
+| Idle RPG (offline) | `idle-rpg-gen --prompt "idle RPG with upgrades" --out game.zip` |
+| Idle RPG with AI content | `idle-rpg-gen --prompt "..." --out game.zip --ollama-model qwen2.5-coder:7b` |
+| Repeatable / deterministic | Add `--seed 42` to any command |
+| See all options | `gamegen --help` or `idle-rpg-gen --help` |
 
 ---
 
 ## 🛠️ Troubleshooting
 
 | Problem | Fix |
-|---|---|
-| `Cannot connect to Ollama` | Ollama is not running — `startollamaserver.py` starts it for you, but if you see this in a manual run: `ollama serve` |
-| `Model not found` / 503 from API | Pull the model: `ollama pull qwen2.5-coder:7b` |
-| `pip install` fails | Make sure Python is installed and on PATH, then retry |
-| Friend sees 404 on ngrok URL | Your terminal was closed — re-run `python startollamaserver.py` |
-| Can't reach local IP from other device | Make sure both devices are on the same Wi-Fi; allow port 5000 in your firewall |
-| Want a different AI model | Set `OLLAMA_MODEL=llama3` in `.env`, then `ollama pull llama3` |
+|---------|-----|
+| `gamegen: command not found` | Run `pip install -e .` first, or use `python gamegen.py` |
+| `flutter: command not found` | Install Flutter SDK from https://docs.flutter.dev/get-started/install |
+| `Cannot connect to Ollama` | Run `ollama serve` (or skip `--ollama-model` to use offline mode) |
+| `Model not found` | Run `ollama pull qwen2.5-coder:7b` |
+| `pip install` fails | Make sure Python 3.9+ is installed and on PATH |
 
 ---
 
-## 💡 Usage examples
+## 📖 More
 
-### Web UI
-Just open the browser URL and describe what you want.
+See the full [README.md](README.md) for a complete CLI reference and list of all generated project features.
 
-### Command line (quick single generation)
-```bash
-python aibase.py -d "create a function that checks if a number is prime"
-python aibase.py -d "create a Flutter login screen with email/password" -l flutter
-python aibase.py -d "create a REST API endpoint for user signup" -l javascript -o signup.js
-```
-
-### Programmatic (Python)
-```python
-from aibase import AibaseTranslator
-
-translator = AibaseTranslator()
-code = translator.translate("create a binary search function", "python")
-print(code)
-```
-
-### REST API
-```bash
-curl -X POST http://localhost:5000/api/translate \
-  -H "Content-Type: application/json" \
-  -d '{"description": "create a hello world function", "language": "python"}'
-```
-
----
-
-## Next steps
-
-- See `README.md` for the full feature list and API docs
-- See `API.md` for all REST endpoints
-- Check `examples/` for Flutter and React Native examples
-
-## Next steps
-
-- See `README.md` for the full feature list and API docs
-- See `API.md` for all REST endpoints
-- Check `examples/` for Flutter and React Native examples

@@ -4,12 +4,6 @@ import importlib
 import importlib.metadata
 
 
-def test_package_importable():
-    """gamedesign_agent must be importable."""
-    mod = importlib.import_module("gamedesign_agent")
-    assert mod is not None
-
-
 def test_gamegen_importable():
     """gamegen module (root gamegen.py) must be importable."""
     mod = importlib.import_module("gamegen")

@@ -2,248 +2,271 @@
 
 [![CI](https://github.com/highskills123/GameGenerator/actions/workflows/ci.yml/badge.svg)](https://github.com/highskills123/GameGenerator/actions/workflows/ci.yml)
 
-A collection of game generation tools and AI-assisted design utilities.
+**One-click Flutter/Flame game generator.** Describe your game in plain English and get a complete, runnable project — Android-ready — in a single command.
+
+## What it does
+
+1. Understands your prompt and picks the right genre (top-down shooter or idle RPG).
+2. Optionally uses a local AI (Ollama) to generate a rich design document: story, quests, characters, enemies, NPC dialogue, upgrade tree.
+3. Scaffolds a complete Flutter/Flame project with all Dart source files, Android build files, assets, and a save system.
+4. Packages everything into a ZIP you can unzip and run immediately with `flutter run`.
+
+## Prerequisites
+
+| # | What | Install |
+|---|------|---------|
+| 1 | **Python 3.9+** | https://www.python.org/downloads/ |
+| 2 | **Flutter SDK ≥ 3.10** | https://docs.flutter.dev/get-started/install |
+| 3 | **Ollama** *(optional – for AI-enhanced content)* | https://ollama.com |
 
 ## Installation
 
 ```bash
-# Minimal install (no optional deps)
+# Clone the repo
+git clone https://github.com/highskills123/GameGenerator.git
+cd GameGenerator
+
+# Install (minimal – CLI tools only, no Ollama required)
 pip install -e .
 
-# With Ollama / HTTP API support (installs requests)
+# Install with the HTTP API server (FastAPI + Uvicorn)
+pip install -e ".[server]"
+
+# Install with Ollama support (AI-enhanced content)
 pip install -e ".[ollama]"
 
-# With local image generation via 🤗 diffusers
-pip install -e ".[image]"
-
-# Install everything (all optional features)
+# Install everything
 pip install -e ".[all]"
-
-# Developer install (pytest, ruff, black)
-pip install -e ".[dev]"
 ```
 
-## Entry Points
+## Quick Start
 
-After installation, the following CLI commands are available:
-
-| Command | Description |
-|---------|-------------|
-| `gamegen` | Flutter/Flame game generator (main entry point) |
-| `gamedesign-agent` | AI Game Design Assistant |
-| `idle-rpg-gen` | **One-shot Idle RPG game generator** (design doc + full project) |
+### Generate any game (offline, no AI needed)
 
 ```bash
-# Generate a game project
-gamegen --prompt "top down space shooter" --out game.zip
+# Top-down space shooter
+gamegen --prompt "top down space shooter with asteroids" --out shooter.zip
 
-# Launch the AI Design Assistant
-gamedesign-agent
-
-# One-shot Idle RPG: generate design doc + Flutter project in one command
-idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom" --out my_idle_rpg.zip
+# Idle RPG
+gamegen --prompt "idle RPG with hero upgrades and quests" --out idle_rpg.zip --idle-rpg
 ```
 
-## One-Shot Idle RPG Generator
-
-Generate a **complete, runnable Idle RPG game** from a single natural-language
-prompt.  One command does everything:
-
-1. **Design document** – generated via Ollama (when available) or a deterministic
-   template fallback (fully offline, no paid APIs required).
-2. **Flutter/Flame project** – idle auto-battle, upgrades, quests, enemies, save/load.
-3. **ZIP archive** – ready to unzip, `flutter pub get`, and run.
-
-### Quick Start (offline, no Ollama)
+### Generate an Idle RPG with full AI content (requires Ollama)
 
 ```bash
-pip install -e .
-idle-rpg-gen --prompt "A dark fantasy idle RPG set in a cursed kingdom" \
-             --out my_idle_rpg.zip
-```
-
-### Quick Start (with Ollama for AI-generated content)
-
-```bash
-# Prerequisites: install and start Ollama, pull the model
+# 1. Install and start Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen2.5-coder:7b
 ollama serve
 
-pip install -e ".[ollama]"
-idle-rpg-gen --prompt "A sci-fi space colony idle RPG" \
-             --out space_colony.zip \
+# 2. Generate the game
+idle-rpg-gen --prompt "A dark fantasy idle RPG in a cursed kingdom" \
+             --out my_game.zip \
              --ollama-model qwen2.5-coder:7b
 ```
 
-### Deterministic / Seeded Generation
-
-Use `--seed` to make the generated content reproducible:
+### Run the generated game on Android
 
 ```bash
-idle-rpg-gen --prompt "cursed kingdom idle RPG" --out game.zip --seed 42
-```
+# Unzip the project
+unzip my_game.zip -d my_game
+cd my_game
 
-### Run the Generated Project
-
-```bash
-# Prerequisites: Flutter SDK ≥ 3.10
-unzip my_idle_rpg.zip -d my_idle_rpg
-cd my_idle_rpg
+# Install Flutter dependencies
 flutter pub get
+
+# Run on a connected Android device or emulator
 flutter run
 ```
 
-### Design Document Formats
+> **Tip (Android build):** The generated project includes all required Android files
+> (`build.gradle`, `MainActivity.kt`, `AndroidManifest.xml`, etc.) so `flutter run`
+> works out of the box — no extra setup needed.
 
-| Flag | Format | Default path |
-|------|--------|--------------|
-| *(none / default)* | JSON | `assets/design/design.json` |
-| `--design-doc-format md` | Markdown | `DESIGN.md` |
+## CLI Reference
 
-### Full CLI reference
+### `gamegen` — main game generator
 
 ```
-idle-rpg-gen --help
+gamegen --prompt "your game description" --out game.zip [OPTIONS]
 ```
 
-### Using `gamegen --idle-rpg` (alternative)
-
-The same functionality is also accessible via the `gamegen` entry point:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--prompt` | *(required)* | Natural-language game description |
+| `--out` | *(required)* | Output ZIP file path |
+| `--idle-rpg` | off | Generate an Idle RPG with full design doc |
+| `--platform` | `android` | Target platform: `android` or `android+ios` |
+| `--scope` | `prototype` | `prototype` or `vertical-slice` |
+| `--art-style` | `pixel-art` | Art style hint |
+| `--seed` | *(none)* | Integer seed for deterministic offline generation |
+| `--model` | *(none)* | Ollama model for AI-enhanced spec |
+| `--design-doc` | off | Also generate an Idle RPG design document |
+| `--design-doc-format` | `json` | Design doc format: `json` or `md` |
+| `--validate` | off | Run `flutter pub get` + `flutter analyze` |
+| `--auto-fix` | off | Auto-patch and re-validate on failure |
+| `--interactive` | off | Prompt for constraint questions before generating |
 
 ```bash
-gamegen --prompt "A cursed kingdom idle RPG" --out game.zip --idle-rpg
-gamegen --prompt "sci-fi idle RPG" --out game.zip --idle-rpg --seed 42
+# Examples
+gamegen --prompt "space shooter with power-ups" --out shooter.zip
+gamegen --prompt "idle RPG with upgrades" --out rpg.zip --idle-rpg --seed 42
+gamegen --prompt "space shooter" --out game.zip --model qwen2.5-coder:7b --validate
 ```
 
-### Generated project features
+### `idle-rpg-gen` — one-shot Idle RPG generator
+
+```
+idle-rpg-gen --prompt "your concept" --out game.zip [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--prompt` | *(required)* | Natural-language Idle RPG description |
+| `--out` | *(required)* | Output ZIP file path |
+| `--seed` | *(none)* | RNG seed for deterministic offline generation |
+| `--platform` | `android` | `android` or `android+ios` |
+| `--design-doc-format` | `json` | `json` or `md` |
+| `--ollama-model` | `qwen2.5-coder:7b` | Ollama model for AI content |
+| `--ollama-base-url` | `http://localhost:11434` | Ollama server URL |
+| `--ollama-temperature` | *(none)* | Sampling temperature (0.0–1.0) |
+| `--ollama-timeout` | *(none)* | Request timeout in seconds |
+
+```bash
+# Offline (no Ollama) – uses template-based content
+idle-rpg-gen --prompt "A dark fantasy idle RPG" --out game.zip
+
+# Deterministic with a seed
+idle-rpg-gen --prompt "cursed kingdom idle RPG" --out game.zip --seed 42
+
+# AI-enhanced (requires Ollama)
+idle-rpg-gen --prompt "sci-fi space colony RPG" --out game.zip \
+             --ollama-model qwen2.5-coder:7b
+```
+
+## HTTP API Server
+
+An optional **FastAPI** server ships with the package and exposes every generator
+feature over HTTP — useful for integrating GameGenerator into a CI pipeline or
+web UI.
+
+### Start the server
+
+```bash
+# Install server dependencies first
+pip install -e ".[server]"
+
+# Start on the default port (8080)
+python -m game_generator.server
+
+# Custom host/port, with auto-reload (dev mode)
+python -m game_generator.server --host 127.0.0.1 --port 9000 --reload
+
+# Or use uvicorn directly
+uvicorn game_generator.server.app:app --reload --port 8080
+```
+
+The server honors the `GAMEGEN_RUNS_DIR` environment variable for the run
+storage directory (default: `runs/`).
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Minimal web UI |
+| `GET` | `/health` | Health check — returns `{"status": "ok"}` |
+| `POST` | `/spec` | Generate a `GameSpec` (heuristic or AI) |
+| `POST` | `/design-doc` | Generate an Idle RPG design document |
+| `POST` | `/generate` | Start a background generation job → returns `run_id` |
+| `GET` | `/status/{run_id}` | Poll job status + all progress events |
+| `GET` | `/download/{run_id}` | Download the completed output ZIP |
+
+### Example: generate a game via the API
+
+```bash
+# Start a generation job
+curl -s -X POST http://localhost:8080/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "idle RPG with hero upgrades", "platform": "android"}' \
+  | python -m json.tool
+# → {"run_id": "abc123", "status": "queued"}
+
+# Poll until complete
+curl -s http://localhost:8080/status/abc123 | python -m json.tool
+
+# Download the ZIP
+curl -OJ http://localhost:8080/download/abc123
+```
+
+Interactive API docs (Swagger UI) are auto-generated at
+`http://localhost:8080/docs`.
+
+## Generated Project Features
+
+### Top-Down Shooter
+
+| File | Description |
+|------|-------------|
+| `lib/game/game.dart` | Main Flame game class, enemy spawning, collision detection |
+| `lib/game/player.dart` | Player movement (keyboard + mobile joystick) |
+| `lib/game/enemy.dart` | Enemy AI and movement |
+| `lib/game/bullet.dart` | Bullet with hitbox |
+| `lib/game/bullet_pool.dart` | Object pool (no per-shot allocations) |
+| `lib/game/hud.dart` | Score / health HUD overlay |
+| `lib/game/mobile_controls.dart` | Virtual joystick + fire button |
+| `lib/game/game_over_overlay.dart` | Game-over screen with restart |
+| `lib/game/save_manager.dart` | High-score persistence via SharedPreferences |
+
+### Idle RPG
 
 | Feature | Details |
 |---------|---------|
 | Idle auto-battle | Configurable tick rate; offline progress catch-up on resume |
 | Upgrade system | 3 categories – Combat, Defence, Economy – with cost scaling |
-| Combat / encounters | Enemy roster from design doc (`assets/data/enemies.json`) |
-| Quests | Loaded from `assets/data/quests.json` (design-doc sourced) |
+| Combat / encounters | Enemy roster from `assets/data/enemies.json` |
+| Quests | Loaded from `assets/data/quests.json` |
+| NPC dialogue | AI-generated dialogue in `assets/data/dialogue.json` |
 | Save / load | Persisted via `SharedPreferences`; reset option in Settings |
-| UI screens | Battle · Quests · Heroes · Shop · Enemies · Settings |
+| UI screens | Battle · Quests · Heroes · Shop · Settings |
+| Design document | World, story beats, factions, locations, items in `assets/design/design.json` |
 
-## Features
+### Android files (included in every generated project)
 
-### Feature 4 – AI Design Assistant
+The generator outputs a complete Android project so the game builds and runs on
+any Android device without extra setup:
 
-A free, open-source AI Game Design Assistant. No paid API keys required.
+- `android/build.gradle` + `android/app/build.gradle`
+- `android/settings.gradle` + `android/gradle.properties`
+- `android/gradle/wrapper/gradle-wrapper.properties`
+- `android/app/src/main/kotlin/…/MainActivity.kt`
+- `android/app/src/main/AndroidManifest.xml`
+- `android/app/src/main/res/` (styles, launch background)
 
-- **Multi-turn chat agent** that maintains conversation state
-- **Procedural level generation** (seed-based, deterministic)
-- **NPC dialogue writer** (template-based + optional local LLM via Ollama)
-- **Art prompt generator** for Stable Diffusion / DALL-E (text prompts)
-- **Optional local image generation** via AUTOMATIC1111 API or 🤗 diffusers
+## Using Ollama for AI-Enhanced Content
 
-```bash
-# Quick start (fully offline)
-pip install -e .
-python -m gamedesign_agent
-# or use the installed entry point:
-gamedesign-agent
-```
-
-For full documentation see [docs/AI_DESIGN_ASSISTANT.md](docs/AI_DESIGN_ASSISTANT.md).
-
-### Idle RPG Design Document Generator (via Ollama)
-
-Generate a complete Idle RPG design document (world, premise, story beats, quests,
-characters, factions, locations, items, enemies, and optional dialogue samples,
-upgrade tree, idle loops) from a natural-language prompt using a local Ollama LLM.
-
-**Defaults:**
-- Base URL: `http://localhost:11434`
-- Model: `qwen2.5-coder:7b`
-
-**Prerequisites:**
+When Ollama is available the generator uses it to create richer content.
+When Ollama is **not** available it falls back automatically to template-based
+content — no error, no paid API required.
 
 ```bash
-# 1. Install Ollama (Linux/macOS):
+# Install Ollama (Linux/macOS)
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. Pull the default model:
+# Pull the recommended model (~4 GB, one-time download)
 ollama pull qwen2.5-coder:7b
 
-# 3. Start Ollama (usually auto-started):
+# Start Ollama (usually auto-started)
 ollama serve
 ```
 
-**Usage (root gamegen.py):**
+Then add `--ollama-model qwen2.5-coder:7b` (or `--model qwen2.5-coder:7b` for `gamegen`)
+to any generator command.
 
-```bash
-# Generate a project with an Idle RPG design doc (JSON, default)
-python gamegen.py \
-    --prompt "A dark fantasy idle RPG set in a cursed kingdom overrun by undead" \
-    --out my_game.zip \
-    --design-doc
+## Supported Genres
 
-# Use Markdown format instead of JSON
-python gamegen.py \
-    --prompt "A sci-fi idle RPG where you build a space colony" \
-    --out game.zip \
-    --design-doc \
-    --design-doc-format md \
-    --design-doc-path DESIGN.md
+| Genre | Keywords detected | Description |
+|-------|------------------|-------------|
+| `top_down_shooter` | shoot, shooter, bullet, space, gun, blast, asteroid | Scrolling top-down shooter with enemy waves |
+| `idle_rpg` | idle, rpg, clicker, upgrade, hero, quest, adventure, level up | Idle auto-battle RPG with upgrades and quests |
 
-# Custom Ollama model and tuning options
-python gamegen.py \
-    --prompt "idle RPG with upgrades" \
-    --out game.zip \
-    --design-doc \
-    --ollama-model qwen2.5-coder:7b \
-    --ollama-base-url http://localhost:11434 \
-    --ollama-temperature 0.7 \
-    --ollama-max-tokens 4096 \
-    --ollama-timeout 180 \
-    --ollama-seed 42
-```
-
-**Usage (GameGenerator/gamegen.py):**
-
-```bash
-cd GameGenerator
-python gamegen.py \
-    --prompt "A dark fantasy idle RPG set in a cursed kingdom" \
-    --out my_game.zip \
-    --design-doc
-```
-
-**Python API:**
-
-```python
-from gamegenerator.ai.design_assistant import generate_idle_rpg_design, design_doc_to_markdown
-
-# Generate JSON design document
-doc = generate_idle_rpg_design(
-    "A dark fantasy idle RPG set in a cursed kingdom",
-    model="qwen2.5-coder:7b",          # default
-    base_url="http://localhost:11434",   # default
-)
-print(doc["world"])
-print(doc["quests"][0]["title"])
-
-# Convert to Markdown
-md = design_doc_to_markdown(doc)
-print(md)
-```
-
-**Design document schema:**
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `world` | string | Setting/world description |
-| `premise` | string | Core narrative premise |
-| `main_story_beats` | list[string] | 5–8 major story milestones |
-| `quests` | list[object] | title, summary, objectives, rewards, giver, level_range |
-| `characters` | list[object] | name, role, backstory, motivations, relationships |
-| `factions` | list[object] | name, description, alignment, goals |
-| `locations` | list[object] | name, description, type, notable_features |
-| `items` | list[object] | name, type, rarity, description, stats |
-| `enemies` | list[object] | name, type, description, abilities, loot |
-| `dialogue_samples` *(optional)* | list[object] | character, lines |
-| `upgrade_tree` *(optional)* | object | category → list of upgrades |
-| `idle_loops` *(optional)* | list[object] | name, description, resource, tick_rate_seconds |
+> More genres coming soon. Use `--idle-rpg` to force the Idle RPG genre regardless of keywords.

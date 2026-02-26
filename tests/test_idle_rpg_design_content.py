@@ -231,7 +231,8 @@ class TestIdleRPGMainDart(unittest.TestCase):
         main = self.files["lib/main.dart"]
         self.assertIn("quest_log_screen.dart", main)
         self.assertIn("characters_screen.dart", main)
-        self.assertIn("shop_screen.dart", main)
+        self.assertIn("store_screen.dart", main)
+        self.assertIn("dungeon_screen.dart", main)
 
     def test_main_dart_includes_game_widget(self):
         main = self.files["lib/main.dart"]

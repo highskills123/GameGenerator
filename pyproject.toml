@@ -26,29 +26,28 @@ image = [
 ollama = [
     "requests>=2.28.0",
 ]
+server = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
     "black>=23.0.0",
-]
-server-test = [
-    "fastapi>=0.110.0",
-    "pydantic>=2.0.0",
     "httpx>=0.24.0",
 ]
 all = [
-    "gamegenerator-design-assistant[config,llm,image,ollama]",
+    "gamegenerator-design-assistant[config,llm,image,ollama,server]",
 ]
 
 [project.scripts]
-gamedesign-agent = "gamedesign_agent.cli:main"
 gamegen = "gamegen:main"
 idle-rpg-gen = "idle_rpg_gen:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["gamedesign_agent*"]
 
 [tool.setuptools]
 py-modules = ["gamegen", "idle_rpg_gen"]
