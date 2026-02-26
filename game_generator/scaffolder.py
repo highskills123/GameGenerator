@@ -387,7 +387,6 @@ def _android_manifest(spec: GameSpec) -> str:
     is_idle_rpg = spec.get("genre") == "idle_rpg"
     # For idle RPG: INTERNET (ads) and BILLING (IAP) permissions + AdMob app ID.
     # Replace the test AdMob app ID before publishing.
-    extra_permissions = ""
     admob_meta = ""
     permissions_block = ""
     if is_idle_rpg:
