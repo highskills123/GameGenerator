@@ -26,11 +26,17 @@
 git clone https://github.com/highskills123/GameGenerator.git
 cd GameGenerator
 
-# Install (minimal – no Ollama required)
+# Install (minimal – CLI tools only, no Ollama required)
 pip install -e .
+
+# Install with the HTTP API server (FastAPI + Uvicorn)
+pip install -e ".[server]"
 
 # Install with Ollama support (AI-enhanced content)
 pip install -e ".[ollama]"
+
+# Install everything
+pip install -e ".[all]"
 ```
 
 ## Quick Start
@@ -137,6 +143,63 @@ idle-rpg-gen --prompt "cursed kingdom idle RPG" --out game.zip --seed 42
 idle-rpg-gen --prompt "sci-fi space colony RPG" --out game.zip \
              --ollama-model qwen2.5-coder:7b
 ```
+
+## HTTP API Server
+
+An optional **FastAPI** server ships with the package and exposes every generator
+feature over HTTP — useful for integrating GameGenerator into a CI pipeline or
+web UI.
+
+### Start the server
+
+```bash
+# Install server dependencies first
+pip install -e ".[server]"
+
+# Start on the default port (8080)
+python -m game_generator.server
+
+# Custom host/port, with auto-reload (dev mode)
+python -m game_generator.server --host 127.0.0.1 --port 9000 --reload
+
+# Or use uvicorn directly
+uvicorn game_generator.server.app:app --reload --port 8080
+```
+
+The server honors the `GAMEGEN_RUNS_DIR` environment variable for the run
+storage directory (default: `runs/`).
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Minimal web UI |
+| `GET` | `/health` | Health check — returns `{"status": "ok"}` |
+| `POST` | `/spec` | Generate a `GameSpec` (heuristic or AI) |
+| `POST` | `/design-doc` | Generate an Idle RPG design document |
+| `POST` | `/generate` | Start a background generation job → returns `run_id` |
+| `GET` | `/status/{run_id}` | Poll job status + all progress events |
+| `GET` | `/download/{run_id}` | Download the completed output ZIP |
+
+### Example: generate a game via the API
+
+```bash
+# Start a generation job
+curl -s -X POST http://localhost:8080/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "idle RPG with hero upgrades", "platform": "android"}' \
+  | python -m json.tool
+# → {"run_id": "abc123", "status": "queued"}
+
+# Poll until complete
+curl -s http://localhost:8080/status/abc123 | python -m json.tool
+
+# Download the ZIP
+curl -OJ http://localhost:8080/download/abc123
+```
+
+Interactive API docs (Swagger UI) are auto-generated at
+`http://localhost:8080/docs`.
 
 ## Generated Project Features
 
