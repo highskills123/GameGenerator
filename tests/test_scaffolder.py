@@ -601,5 +601,264 @@ class TestIdleRPGExpansion(unittest.TestCase):
         self.assertIn("APPLICATION_ID", manifest)
 
 
+# ---------------------------------------------------------------------------
+# MU Online-style visual overhaul tests
+# ---------------------------------------------------------------------------
+
+class TestMuOnlineVisuals(unittest.TestCase):
+    """Tests for MU Online-style visual changes: dungeon background, knight
+    hero sprite, demon enemy sprite, redesigned HUD, skill hotbar, and theme."""
+
+    def setUp(self):
+        self.files = scaffold_project(_idle_spec())
+
+    # ── New files ─────────────────────────────────────────────────────────────
+
+    def test_game_background_dart_exists(self):
+        self.assertIn("lib/game/game_background.dart", self.files)
+
+    def test_skill_hotbar_widget_exists(self):
+        self.assertIn("lib/widgets/skill_hotbar.dart", self.files)
+
+    # ── GameBackground – atmospheric dungeon ─────────────────────────────────
+
+    def test_game_background_draws_sky(self):
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("_drawSky", content)
+
+    def test_game_background_draws_floor(self):
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("_drawFloor", content)
+
+    def test_game_background_draws_walls(self):
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("_drawWalls", content)
+
+    def test_game_background_has_torch_glow(self):
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("_drawTorchGlow", content)
+
+    def test_game_background_has_animated_particles(self):
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("_Particle", content)
+        self.assertIn("_drawParticles", content)
+
+    def test_game_background_priority_negative(self):
+        """Background must be rendered before all other components."""
+        content = self.files["lib/game/game_background.dart"]
+        self.assertIn("priority: -10", content)
+
+    # ── game.dart – MP + skill system ────────────────────────────────────────
+
+    def test_game_dart_uses_game_background(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("GameBackground", content)
+        self.assertIn("game_background.dart", content)
+
+    def test_game_dart_no_longer_uses_plain_rectangle_background(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertNotIn(
+            "RectangleComponent(size: size",
+            content,
+            "Background should be GameBackground, not a plain RectangleComponent",
+        )
+
+    def test_game_dart_has_skill_type_enum(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("enum SkillType", content)
+        self.assertIn("fireStrike", content)
+        self.assertIn("guard", content)
+        self.assertIn("heal", content)
+
+    def test_game_dart_has_mp_fields(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("int mp = 100;", content)
+        self.assertIn("int maxMp = 100;", content)
+
+    def test_game_dart_has_guard_fields(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("bool isGuardActive = false;", content)
+        self.assertIn("_guardTimer", content)
+
+    def test_game_dart_has_skill_activation_method(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("onActivateSkill", content)
+
+    def test_game_dart_has_tap_skill_attack_method(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("onTapSkillAttack", content)
+
+    def test_game_dart_has_mp_regen_in_update(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("mp + dt * 5", content)
+
+    def test_game_dart_guard_reduces_damage(self):
+        content = self.files["lib/game/game.dart"]
+        self.assertIn("isGuardActive ? (amount * 0.5)", content)
+
+    # ── hero.dart – armored knight sprite ────────────────────────────────────
+
+    def test_hero_dart_has_knight_helmet(self):
+        content = self.files["lib/game/hero.dart"]
+        self.assertIn("helmPath", content)
+
+    def test_hero_dart_has_visor_glow(self):
+        content = self.files["lib/game/hero.dart"]
+        # Blue visor colour
+        self.assertIn("0xFF00AAFF", content)
+
+    def test_hero_dart_has_golden_sword(self):
+        content = self.files["lib/game/hero.dart"]
+        self.assertIn("0xFFD4AA00", content)
+
+    def test_hero_dart_has_pauldrons(self):
+        content = self.files["lib/game/hero.dart"]
+        self.assertIn("pauldron", content.lower())
+
+    def test_hero_dart_has_attack_aura(self):
+        """Hero should show a glowing aura when attacking (_isFlashing)."""
+        content = self.files["lib/game/hero.dart"]
+        self.assertIn("_isFlashing", content)
+        self.assertIn("RadialGradient", content)
+
+    def test_hero_dart_has_shadow(self):
+        content = self.files["lib/game/hero.dart"]
+        self.assertIn("drawOval", content)
+
+    # ── enemy.dart – dark demon sprite ────────────────────────────────────────
+
+    def test_enemy_dart_is_position_component(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("PositionComponent", content)
+        self.assertNotIn("RectangleComponent", content)
+
+    def test_enemy_dart_has_render_minion(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("_renderMinion", content)
+
+    def test_enemy_dart_has_render_boss(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("_renderBoss", content)
+
+    def test_enemy_dart_has_horns(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("horn", content.lower())
+
+    def test_enemy_dart_has_glowing_red_eyes(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("0xFFFF2200", content)
+        self.assertIn("maskFilter", content)
+
+    def test_enemy_dart_boss_has_crown(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("crown", content.lower())
+
+    def test_enemy_dart_boss_has_wings(self):
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("wing", content.lower())
+
+    def test_enemy_dart_has_animated_eyes(self):
+        """Enemy eyes should pulse using time-based animation."""
+        content = self.files["lib/game/enemy.dart"]
+        self.assertIn("_time", content)
+
+    # ── hud.dart – MU Online-style HUD ───────────────────────────────────────
+
+    def test_hud_has_mu_online_top_bar(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("_drawTopBar", content)
+
+    def test_hud_has_minimap(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("_drawMinimap", content)
+
+    def test_hud_minimap_shows_hero_dot(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("0xFF00AAFF", content)  # hero dot blue
+
+    def test_hud_minimap_shows_enemy_dot(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("0xFFFF2200", content)  # enemy dot red
+
+    def test_hud_has_red_hp_bar(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("0xFFCC0000", content)
+
+    def test_hud_has_blue_mp_bar(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("0xFF0044CC", content)
+        self.assertIn("g.mp", content)
+
+    def test_hud_has_purple_xp_bar(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("0xFF7722CC", content)
+
+    def test_hud_bars_have_glow_effect(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("MaskFilter.blur", content)
+
+    def test_hud_shows_guard_indicator(self):
+        content = self.files["lib/game/hud.dart"]
+        self.assertIn("isGuardActive", content)
+
+    # ── skill_hotbar.dart ─────────────────────────────────────────────────────
+
+    def test_skill_hotbar_has_four_skills(self):
+        content = self.files["lib/widgets/skill_hotbar.dart"]
+        for skill in ["Strike", "Fire", "Guard", "Heal"]:
+            self.assertIn(skill, content)
+
+    def test_skill_hotbar_has_cooldown_overlay(self):
+        content = self.files["lib/widgets/skill_hotbar.dart"]
+        self.assertIn("cooldown", content.lower())
+        self.assertIn("AnimationController", content)
+
+    def test_skill_hotbar_has_mp_costs(self):
+        content = self.files["lib/widgets/skill_hotbar.dart"]
+        self.assertIn("mpCost", content)
+        self.assertIn("MP", content)
+
+    def test_skill_hotbar_calls_game_methods(self):
+        content = self.files["lib/widgets/skill_hotbar.dart"]
+        self.assertIn("SkillType.fireStrike", content)
+        self.assertIn("SkillType.guard", content)
+        self.assertIn("SkillType.heal", content)
+        self.assertIn("onTapSkillAttack", content)
+
+    def test_skill_hotbar_has_gold_border_styling(self):
+        content = self.files["lib/widgets/skill_hotbar.dart"]
+        self.assertIn("B8860B", content)
+
+    # ── main.dart – MU Online theme ───────────────────────────────────────────
+
+    def test_main_dart_imports_skill_hotbar(self):
+        content = self.files["lib/main.dart"]
+        self.assertIn("skill_hotbar.dart", content)
+        self.assertIn("SkillHotbar", content)
+
+    def test_main_dart_embeds_skill_hotbar_in_battle_tab(self):
+        content = self.files["lib/main.dart"]
+        self.assertIn("SkillHotbar(game: _game)", content)
+
+    def test_main_dart_has_mu_online_theme_data(self):
+        content = self.files["lib/main.dart"]
+        self.assertIn("ThemeData(", content)
+        # Gold colour
+        self.assertIn("D4A017", content)
+
+    def test_main_dart_has_dark_nav_bar(self):
+        content = self.files["lib/main.dart"]
+        self.assertIn("06041A", content)
+
+    def test_main_dart_battle_tab_uses_column_for_skill_hotbar(self):
+        """Battle tab should use Column so SkillHotbar sits below game canvas."""
+        content = self.files["lib/main.dart"]
+        self.assertIn("Column(", content)
+
+    def test_main_dart_still_has_eight_nav_items(self):
+        content = self.files["lib/main.dart"]
+        self.assertEqual(content.count("BottomNavigationBarItem"), 8)
+
+
 if __name__ == "__main__":
     unittest.main()

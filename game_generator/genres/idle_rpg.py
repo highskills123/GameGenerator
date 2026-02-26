@@ -88,6 +88,10 @@ def generate_files(spec: GameSpec) -> Dict[str, str]:
     # Ad service wrapper
     files["lib/services/ad_service.dart"] = _ad_service_dart()
 
+    # MU Online-style visual components
+    files["lib/game/game_background.dart"] = _game_background_dart(safe_name)
+    files["lib/widgets/skill_hotbar.dart"] = _skill_hotbar_widget_dart(safe_name)
+
     # Custom main.dart with bottom-navigation layout
     orientation = spec.get("orientation", "portrait")
     files["lib/main.dart"] = _main_dart_with_nav(safe_name, title, orientation)
@@ -113,7 +117,11 @@ import 'upgrade_overlay.dart';
 import 'save_manager.dart';
 import 'damage_text.dart';
 import 'game_over_overlay.dart';
+import 'game_background.dart';
 import '../services/ad_service.dart';
+
+/// Skill types activated from the skill hotbar.
+enum SkillType {{ fireStrike, guard, heal }}
 
 class {name}Game extends FlameGame with TapCallbacks {{
   // ── Persistent state ──────────────────────────────────────────────
@@ -132,6 +140,12 @@ class {name}Game extends FlameGame with TapCallbacks {{
 
   // ── Session state ─────────────────────────────────────────────────
   bool isGameOver = false;
+
+  // ── Skill / MP system ─────────────────────────────────────────────
+  int mp = 100;
+  int maxMp = 100;
+  bool isGuardActive = false;
+  double _guardTimer = 0;
 
   // ── Services ──────────────────────────────────────────────────────
   late final AdService adService;
@@ -157,8 +171,8 @@ class {name}Game extends FlameGame with TapCallbacks {{
     prestigeCount = saveManager.prestigeCount;
     currentDungeonLayer = saveManager.currentDungeonLayer;
 
-    // Background
-    add(RectangleComponent(size: size, paint: Paint()..color = const Color(0xFF1a1a2e)));
+    // Atmospheric dark-fantasy dungeon background
+    add(GameBackground(game: this));
 
     // Hero – restore persisted level/XP
     hero = GameHero(game: this);
@@ -260,7 +274,8 @@ class {name}Game extends FlameGame with TapCallbacks {{
   }}
 
   void heroTakeDamage(int amount) {{
-    hero.hp = (hero.hp - amount).clamp(0, hero.maxHp);
+    final effective = isGuardActive ? (amount * 0.5).round() : amount;
+    hero.hp = (hero.hp - effective).clamp(0, hero.maxHp);
     if (hero.hp <= 0) _triggerGameOver();
   }}
 
@@ -311,6 +326,51 @@ class {name}Game extends FlameGame with TapCallbacks {{
         onComplete();
       }},
     );
+  }}
+
+  @override
+  void update(double dt) {{
+    super.update(dt);
+    // MP regeneration (5 MP/sec)
+    if (mp < maxMp) {{
+      mp = (mp + dt * 5).clamp(0, maxMp.toDouble()).round();
+    }}
+    // Guard timer countdown
+    if (isGuardActive) {{
+      _guardTimer -= dt;
+      if (_guardTimer <= 0) isGuardActive = false;
+    }}
+  }}
+
+  // ── Skill activations (called from SkillHotbar widget) ────────────
+
+  /// Tap-style attack from skill button (same as tapping the enemy).
+  void onTapSkillAttack() {{
+    if (isGameOver || !enemy.isMounted) return;
+    final pos = enemy.position + enemy.size / 2;
+    final (dmg, isCrit) = hero.attack(enemy);
+    add(DamageText(amount: dmg, position: pos, isCrit: isCrit));
+    _checkEnemyDead();
+  }}
+
+  /// Activate a skill ability.
+  void onActivateSkill(SkillType type) {{
+    switch (type) {{
+      case SkillType.fireStrike:
+        if (!isGameOver && enemy.hp > 0) {{
+          final pos = enemy.position + enemy.size / 2;
+          final dmg = hero.attackPower * 3;
+          enemy.takeDamage(dmg);
+          add(DamageText(amount: dmg, position: pos, isCrit: true));
+          _checkEnemyDead();
+        }}
+      case SkillType.guard:
+        isGuardActive = true;
+        _guardTimer = 5.0;
+      case SkillType.heal:
+        final healAmt = (hero.maxHp * 0.20).round();
+        hero.hp = (hero.hp + healAmt).clamp(0, hero.maxHp);
+    }}
   }}
 
   /// Whether the current wave is a boss wave.
@@ -443,36 +503,181 @@ class GameHero extends PositionComponent {{
 
   @override
   void render(Canvas canvas) {{
-    // Body colour: white flash when attacking, blue otherwise
-    final bodyColor = _isFlashing ? Colors.white : const Color(0xFF4488FF);
+    final w = size.x;
+    final h = size.y;
+
+    // 1. Shadow beneath knight
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(w * 0.5, h - 2), width: w * 0.68, height: 7),
+      Paint()..color = Colors.black.withOpacity(0.35),
+    );
+
+    // 2. Blue attack aura
+    if (_isFlashing) {{
+      canvas.drawCircle(
+        Offset(w * 0.5, h * 0.44),
+        w * 0.72,
+        Paint()
+          ..shader = RadialGradient(colors: const [
+            Color(0x9900CCFF),
+            Color(0x00004488),
+          ]).createShader(Rect.fromCircle(
+              center: Offset(w * 0.5, h * 0.44), radius: w * 0.72)),
+      );
+    }}
+
+    // 3. Legs
+    for (final lx in [w * 0.22, w * 0.57]) {{
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(lx, h * 0.70, w * 0.20, h * 0.28),
+          const Radius.circular(3),
+        ),
+        Paint()..color = const Color(0xFF1A2A4A),
+      );
+      // Boot base
+      canvas.drawRect(
+        Rect.fromLTWH(lx, h * 0.88, w * 0.20, h * 0.10),
+        Paint()..color = const Color(0xFF0F1A30),
+      );
+    }}
+
+    // 4. Body armor
     canvas.drawRRect(
-      RRect.fromRectAndRadius(size.toRect(), const Radius.circular(8)),
-      Paint()..color = bodyColor,
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.18, h * 0.40, w * 0.64, h * 0.33),
+        const Radius.circular(5),
+      ),
+      Paint()
+        ..color = _isFlashing
+            ? const Color(0xFF3A5AEE)
+            : const Color(0xFF1E3264),
+    );
+    // Chest highlight
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.26, h * 0.43, w * 0.17, h * 0.07),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0x553A5AAA),
     );
 
-    // HP bar below hero body
-    final hpRatio = maxHp > 0 ? hp / maxHp : 1.0;
+    // 5. Pauldrons
+    for (final px in [w * 0.03, w * 0.79]) {{
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(px, h * 0.36, w * 0.18, h * 0.16),
+          const Radius.circular(6),
+        ),
+        Paint()..color = const Color(0xFF243870),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(px, h * 0.36, w * 0.18, h * 0.16),
+          const Radius.circular(6),
+        ),
+        Paint()
+          ..color = const Color(0x336688CC)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }}
+
+    // 6. Neck
     canvas.drawRect(
-      Rect.fromLTWH(0, size.y + 4, size.x, 6),
-      Paint()..color = Colors.grey.shade800,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.y + 4, size.x * hpRatio, 6),
-      Paint()..color = hpRatio > 0.4 ? Colors.greenAccent : Colors.redAccent,
+      Rect.fromLTWH(w * 0.38, h * 0.27, w * 0.24, h * 0.15),
+      Paint()..color = const Color(0xFF1A2850),
     );
 
-    // XP bar
-    final xpRatio = xpToNextLevel > 0 ? xp / xpToNextLevel : 1.0;
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.y + 12, size.x, 4),
-      Paint()..color = Colors.grey.shade900,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.y + 12, size.x * xpRatio, 4),
-      Paint()..color = const Color(0xFF9333EA),
+    // 7. Helmet
+    final helmPath = Path()
+      ..moveTo(w * 0.20, h * 0.28)
+      ..lineTo(w * 0.18, h * 0.10)
+      ..lineTo(w * 0.50, h * 0.04)
+      ..lineTo(w * 0.82, h * 0.10)
+      ..lineTo(w * 0.80, h * 0.28)
+      ..close();
+    canvas.drawPath(helmPath, Paint()..color = const Color(0xFF142244));
+    // Helmet ridge
+    canvas.drawLine(
+      Offset(w * 0.50, h * 0.04),
+      Offset(w * 0.50, h * 0.28),
+      Paint()..color = const Color(0xFF2A3A60)..strokeWidth = 2,
     );
 
-    super.render(canvas);
+    // 8. Visor slit (glowing blue)
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.26, h * 0.16, w * 0.48, h * 0.07),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0xFF00AAFF),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.26, h * 0.16, w * 0.48, h * 0.07),
+        const Radius.circular(2),
+      ),
+      Paint()
+        ..color = const Color(0x7700DDFF)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
+    // 9. Sword (right side, angled)
+    canvas.drawLine(
+      Offset(w * 0.86, h * 0.58),
+      Offset(w * 1.10, h * 0.12),
+      Paint()
+        ..color = _isFlashing ? const Color(0xFFFFEE44) : const Color(0xFFD4AA00)
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round,
+    );
+    // Crossguard
+    canvas.drawLine(
+      Offset(w * 0.79, h * 0.50),
+      Offset(w * 1.12, h * 0.46),
+      Paint()
+        ..color = const Color(0xFFAA8800)
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round,
+    );
+    // Sword glow when attacking
+    if (_isFlashing) {{
+      canvas.drawLine(
+        Offset(w * 0.86, h * 0.58),
+        Offset(w * 1.10, h * 0.12),
+        Paint()
+          ..color = const Color(0x88FFEE44)
+          ..strokeWidth = 10
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+    }}
+
+    // 10. Shield (left side)
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-w * 0.10, h * 0.38, w * 0.24, h * 0.30),
+        const Radius.circular(4),
+      ),
+      Paint()..color = const Color(0xFF0A1830),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-w * 0.10, h * 0.38, w * 0.24, h * 0.30),
+        const Radius.circular(4),
+      ),
+      Paint()
+        ..color = const Color(0x553366CC)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    // Shield emblem
+    canvas.drawCircle(
+      Offset(w * 0.02, h * 0.53),
+      w * 0.06,
+      Paint()..color = const Color(0xFF1A3A7A),
+    );
   }}
 }}
 """
@@ -480,24 +685,28 @@ class GameHero extends PositionComponent {{
 
 def _enemy_dart(name: str) -> str:
     return f"""\
+import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game.dart';
 
-/// Enemy.  Boss variant spawns every 5th wave: 5× HP, 5× gold reward,
-/// gold border, enlarged sprite, and counter-attack power.
-class GameEnemy extends RectangleComponent {{
+/// Dark-fantasy enemy sprite.
+/// Regular enemies render as horned demons with glowing red eyes.
+/// Boss enemies (every 5th wave) render larger with crown, wings, and golden aura.
+class GameEnemy extends PositionComponent {{
   final {name}Game game;
   final int wave;
 
+  static final _rng = Random();
   late int maxHp;
   late int hp;
   late int attackPower;
   bool isBoss = false;
   String enemyName = 'Enemy';
+  double _time = 0;
 
   GameEnemy({{required this.game, required this.wave}})
-      : super(size: Vector2(64, 64), paint: Paint()..color = Colors.red);
+      : super(size: Vector2(64, 64));
 
   @override
   Future<void> onLoad() async {{
@@ -519,47 +728,233 @@ class GameEnemy extends RectangleComponent {{
   }}
 
   @override
+  void update(double dt) {{
+    super.update(dt);
+    _time += dt;
+  }}
+
+  @override
   void render(Canvas canvas) {{
     final ratio = maxHp > 0 ? hp / maxHp : 1.0;
-
     if (isBoss) {{
-      // Boss: deep red fill with amber border
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
-        Paint()..color = Color.lerp(Colors.deepOrange, Colors.red[900]!, 1 - ratio)!,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
-        Paint()
-          ..color = Colors.amber
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3,
-      );
+      _renderBoss(canvas, ratio);
     }} else {{
-      paint = Paint()..color = Color.lerp(Colors.orange, Colors.red, 1 - ratio)!;
-      super.render(canvas);
+      _renderMinion(canvas, ratio);
+    }}
+    _renderHpBar(canvas, ratio);
+    _renderName(canvas);
+  }}
+
+  void _renderMinion(Canvas canvas, double ratio) {{
+    final w = size.x;
+    final h = size.y;
+
+    // Shadow
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(w * 0.5, h - 3), width: w * 0.65, height: 6),
+      Paint()..color = Colors.black.withOpacity(0.35),
+    );
+
+    // Dark red aura (subtle)
+    canvas.drawCircle(
+      Offset(w * 0.5, h * 0.5),
+      w * 0.58,
+      Paint()
+        ..shader = RadialGradient(colors: const [
+          Color(0x44CC0000),
+          Color(0x00880000),
+        ]).createShader(
+            Rect.fromCircle(center: Offset(w * 0.5, h * 0.5), radius: w * 0.58)),
+    );
+
+    // Arms (claws)
+    for (final ax in [-w * 0.06, w * 0.86]) {{
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(ax, h * 0.42, w * 0.20, h * 0.28),
+          const Radius.circular(3),
+        ),
+        Paint()..color = const Color(0xFF440000),
+      );
     }}
 
-    // HP bar above enemy
-    const barH = 6.0;
-    canvas.drawRect(
-      Rect.fromLTWH(0, -14, size.x, barH),
-      Paint()..color = Colors.grey.shade800,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(0, -14, size.x * ratio, barH),
-      Paint()..color = isBoss ? Colors.amber : Colors.greenAccent,
+    // Body
+    final bodyColor =
+        Color.lerp(const Color(0xFF550000), const Color(0xFF220000), 1 - ratio)!;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.20, h * 0.42, w * 0.60, h * 0.48),
+        const Radius.circular(5),
+      ),
+      Paint()..color = bodyColor,
     );
 
-    // Enemy name label
+    // Head
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.25, h * 0.13, w * 0.50, h * 0.32),
+        const Radius.circular(8),
+      ),
+      Paint()..color = const Color(0xFF330A0A),
+    );
+
+    // Horns (left + right)
+    final hornPaint = Paint()..color = const Color(0xFF880022);
+    for (final horn in [
+      [w * 0.25, w * 0.12, w * 0.36, h * 0.19, h * 0.02, h * 0.17],
+      [w * 0.75, w * 0.88, w * 0.64, h * 0.19, h * 0.02, h * 0.17],
+    ]) {{
+      canvas.drawPath(
+        Path()
+          ..moveTo(horn[0], horn[3])
+          ..lineTo(horn[1], horn[4])
+          ..lineTo(horn[2], horn[5])
+          ..close(),
+        hornPaint,
+      );
+    }}
+
+    // Glowing red eyes
+    final pulse = ((_time * 3.0).remainder(1.0) * 3.14).abs();
+    final eyeGlow = 80 + (40 * (1 - pulse / 3.14)).round();
+    for (final ex in [w * 0.37, w * 0.63]) {{
+      canvas.drawCircle(
+        Offset(ex, h * 0.27),
+        7,
+        Paint()
+          ..color = Color.fromARGB(eyeGlow, 255, 0, 0)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      canvas.drawCircle(Offset(ex, h * 0.27), 4, Paint()..color = const Color(0xFFFF2200));
+    }}
+  }}
+
+  void _renderBoss(Canvas canvas, double ratio) {{
+    final w = size.x;
+    final h = size.y;
+
+    // Golden aura
+    final auraAlpha = (70 + 30 * ((_time * 2).remainder(1.0))).round();
+    canvas.drawCircle(
+      Offset(w * 0.5, h * 0.5),
+      w * 0.80,
+      Paint()
+        ..shader = RadialGradient(colors: [
+          Color.fromARGB(auraAlpha, 200, 150, 0),
+          const Color(0x00994400),
+        ]).createShader(
+            Rect.fromCircle(center: Offset(w * 0.5, h * 0.5), radius: w * 0.80)),
+    );
+
+    // Wings
+    final wingPaint = Paint()..color = const Color(0xFF330000);
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.12, h * 0.42)
+        ..lineTo(-w * 0.18, h * 0.20)
+        ..lineTo(-w * 0.06, h * 0.50)
+        ..lineTo(w * 0.12, h * 0.68)
+        ..close(),
+      wingPaint,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.88, h * 0.42)
+        ..lineTo(w * 1.18, h * 0.20)
+        ..lineTo(w * 1.06, h * 0.50)
+        ..lineTo(w * 0.88, h * 0.68)
+        ..close(),
+      wingPaint,
+    );
+
+    // Body
+    final bodyColor =
+        Color.lerp(const Color(0xFF6A0000), const Color(0xFF3A0000), 1 - ratio)!;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.12, h * 0.40, w * 0.76, h * 0.50),
+        const Radius.circular(8),
+      ),
+      Paint()..color = bodyColor,
+    );
+
+    // Head
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.18, h * 0.10, w * 0.64, h * 0.34),
+        const Radius.circular(10),
+      ),
+      Paint()..color = const Color(0xFF440808),
+    );
+
+    // Crown
+    final crownPath = Path()
+      ..moveTo(w * 0.18, h * 0.13)
+      ..lineTo(w * 0.24, h * 0.01)
+      ..lineTo(w * 0.33, h * 0.10)
+      ..lineTo(w * 0.42, h * 0.00)
+      ..lineTo(w * 0.50, h * 0.09)
+      ..lineTo(w * 0.58, h * 0.00)
+      ..lineTo(w * 0.67, h * 0.10)
+      ..lineTo(w * 0.76, h * 0.01)
+      ..lineTo(w * 0.82, h * 0.13)
+      ..close();
+    canvas.drawPath(crownPath, Paint()..color = const Color(0xFFFFCC00));
+
+    // Boss glowing eyes (larger)
+    for (final ex in [w * 0.35, w * 0.65]) {{
+      canvas.drawCircle(
+        Offset(ex, h * 0.26),
+        10,
+        Paint()
+          ..color = const Color(0xAAFF6600)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
+      canvas.drawCircle(Offset(ex, h * 0.26), 6, Paint()..color = const Color(0xFFFF8800));
+    }}
+  }}
+
+  void _renderHpBar(Canvas canvas, double ratio) {{
+    const barH = 7.0;
+    final barY = -18.0;
+    final barColor =
+        isBoss ? const Color(0xFFFFAA00) : const Color(0xFFCC0000);
+    // Background
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, barY, size.x, barH),
+        const Radius.circular(3),
+      ),
+      Paint()..color = const Color(0xFF1A0000),
+    );
+    // Fill
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, barY, size.x * ratio.clamp(0, 1), barH),
+        const Radius.circular(3),
+      ),
+      Paint()..color = barColor,
+    );
+    // Shine
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, barY, size.x * ratio.clamp(0, 1), barH * 0.35),
+        const Radius.circular(3),
+      ),
+      Paint()..color = Colors.white.withOpacity(0.20),
+    );
+  }}
+
+  void _renderName(Canvas canvas) {{
     final tp = TextPaint(
       style: TextStyle(
-        color: isBoss ? Colors.amber : Colors.white54,
-        fontSize: isBoss ? 12 : 10,
+        color: isBoss ? const Color(0xFFFFCC00) : const Color(0xFFFF8888),
+        fontSize: isBoss ? 11 : 9,
         fontWeight: isBoss ? FontWeight.bold : FontWeight.normal,
+        shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
       ),
     );
-    tp.render(canvas, enemyName, Vector2(2, -26));
+    tp.render(canvas, enemyName, Vector2(2, -30));
   }}
 
   void takeDamage(int amount) {{
@@ -652,14 +1047,42 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game.dart';
 
-/// In-game HUD: shows gold, wave, speed, hero HP bar, XP bar.
+/// MU Online-style HUD.
+/// • Top bar: gold / diamonds / wave / level badge / guard indicator
+/// • Top-right: mini-map with hero (blue) and enemy (red/gold) dots
+/// • Bottom panel: HP bar (red), MP bar (blue), XP bar (purple)
 class Hud extends PositionComponent with HasGameRef<{name}Game> {{
-  static final _gold = TextPaint(
-    style: const TextStyle(color: Colors.amber, fontSize: 16,
-        fontWeight: FontWeight.bold),
+  static final _goldStyle = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFFD4A017),
+      fontSize: 13,
+      fontWeight: FontWeight.bold,
+      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+    ),
   );
-  static final _info = TextPaint(
-    style: const TextStyle(color: Colors.white70, fontSize: 13),
+  static final _infoStyle = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFFCCCCCC),
+      fontSize: 11,
+      shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+    ),
+  );
+  static final _hpStyle = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFFFF8888),
+      fontSize: 10,
+      fontWeight: FontWeight.bold,
+    ),
+  );
+  static final _mpStyle = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFF8888FF),
+      fontSize: 10,
+      fontWeight: FontWeight.bold,
+    ),
+  );
+  static final _xpStyle = TextPaint(
+    style: const TextStyle(color: Color(0xFFAA66FF), fontSize: 9),
   );
 
   Hud() : super(priority: 10);
@@ -668,50 +1091,174 @@ class Hud extends PositionComponent with HasGameRef<{name}Game> {{
   void render(Canvas canvas) {{
     final g = gameRef;
     final h = g.hero;
-
-    // Gold (left)
-    _gold.render(canvas, '💰 ${{g.gold}}', Vector2(10, 10));
-
-    // Diamonds (top-right)
-    _gold.render(canvas, '💎 ${{g.diamonds}}', Vector2(g.size.x - 80, 10));
-
-    // Wave + speed (boss flag)
-    final bossTag = g.isBossWave ? '👑 BOSS ' : '';
-    _info.render(
-      canvas,
-      '${{bossTag}}Wave ${{g.wave}}  ${{g.speedMultiplier}}x ▶',
-      Vector2(10, 30),
-    );
-
-    // Hero level / XP
-    _info.render(
-      canvas,
-      'Hero Lv.${{h.heroLevel}}  ${{h.xp}}/${{h.xpToNextLevel}} XP'
-      '${{g.prestigeCount > 0 ? "  ✨${{g.prestigeCount}}" : ""}}',
-      Vector2(10, 48),
-    );
-
-    // HP bar
-    final hpRatio = h.maxHp > 0 ? h.hp / h.maxHp : 1.0;
-    _renderBar(canvas, top: 66, ratio: hpRatio,
-        full: hpRatio > 0.4 ? Colors.greenAccent : Colors.redAccent);
-    _info.render(canvas, 'HP: ${{h.hp}}/${{h.maxHp}}', Vector2(154, 62));
-
-    // XP bar
-    final xpRatio = h.xpToNextLevel > 0 ? h.xp / h.xpToNextLevel : 1.0;
-    _renderBar(canvas, top: 76, ratio: xpRatio,
-        full: const Color(0xFF9333EA));
+    final w = g.size.x;
+    final sh = g.size.y;
+    _drawTopBar(canvas, g, h, w);
+    _drawMinimap(canvas, g, w);
+    _drawHeroStats(canvas, g, h, w, sh);
   }}
 
-  void _renderBar(Canvas canvas, {{
-    required double top,
-    required double ratio,
-    required Color full,
-  }}) {{
-    canvas.drawRect(Rect.fromLTWH(10, top, 140, 5),
-        Paint()..color = Colors.grey.shade800);
-    canvas.drawRect(Rect.fromLTWH(10, top, 140 * ratio.clamp(0, 1), 5),
-        Paint()..color = full);
+  void _drawTopBar(Canvas canvas, {name}Game g, GameHero h, double w) {{
+    // Panel background
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, w, 52),
+      Paint()..color = const Color(0xCC040212),
+    );
+    canvas.drawLine(
+      const Offset(0, 52),
+      Offset(w, 52),
+      Paint()..color = const Color(0x88B8860B)..strokeWidth = 1,
+    );
+
+    // Gold + Diamonds (left column)
+    _goldStyle.render(canvas, '💰 ${{g.gold}}', Vector2(10, 8));
+    _goldStyle.render(canvas, '💎 ${{g.diamonds}}', Vector2(10, 28));
+
+    // Wave + speed (centre)
+    final bossTag = g.isBossWave ? '👑 ' : '';
+    _infoStyle.render(canvas, '${{bossTag}}Wave ${{g.wave}}', Vector2(w * 0.40, 10));
+    _infoStyle.render(canvas, '${{g.speedMultiplier}}x ▶', Vector2(w * 0.40, 28));
+
+    // Level badge
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.65, 8, 58, 18), const Radius.circular(4)),
+      Paint()..color = const Color(0xCC080616),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.65, 8, 58, 18), const Radius.circular(4)),
+      Paint()
+        ..color = const Color(0xAAB8860B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    _goldStyle.render(canvas, 'Lv.${{h.heroLevel}}', Vector2(w * 0.67, 11));
+
+    // Guard indicator
+    if (g.isGuardActive) {{
+      _infoStyle.render(canvas, '🛡 GUARD', Vector2(w * 0.65, 30));
+    }}
+  }}
+
+  void _drawMinimap(Canvas canvas, {name}Game g, double w) {{
+    const mapSize = 68.0;
+    final mx = w - mapSize - 6;
+    const my = 56.0;
+
+    // Background
+    canvas.drawRect(
+      Rect.fromLTWH(mx, my, mapSize, mapSize),
+      Paint()..color = const Color(0xDD040210),
+    );
+    // Border
+    canvas.drawRect(
+      Rect.fromLTWH(mx, my, mapSize, mapSize),
+      Paint()
+        ..color = const Color(0x99B8860B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    // Grid lines
+    final grid = Paint()..color = const Color(0x1AFFFFFF)..strokeWidth = 0.5;
+    for (int i = 1; i < 4; i++) {{
+      final d = i * mapSize / 4;
+      canvas.drawLine(Offset(mx + d, my), Offset(mx + d, my + mapSize), grid);
+      canvas.drawLine(Offset(mx, my + d), Offset(mx + mapSize, my + d), grid);
+    }}
+
+    // Hero dot (blue glow)
+    final hx = mx + (g.hero.position.x / g.size.x) * mapSize;
+    final hy = my + (g.hero.position.y / g.size.y) * mapSize;
+    canvas.drawCircle(
+      Offset(hx, hy),
+      4.5,
+      Paint()
+        ..color = const Color(0xAA00AAFF)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    canvas.drawCircle(Offset(hx, hy), 3, Paint()..color = const Color(0xFF00AAFF));
+
+    // Enemy dot
+    if (g.enemy.isMounted && g.enemy.hp > 0) {{
+      final ex = mx + (g.enemy.position.x / g.size.x) * mapSize;
+      final ey = my + (g.enemy.position.y / g.size.y) * mapSize;
+      final dotC = g.enemy.isBoss ? const Color(0xFFFFAA00) : const Color(0xFFFF2200);
+      canvas.drawCircle(Offset(ex, ey), g.enemy.isBoss ? 5 : 3, Paint()..color = dotC);
+    }}
+
+    // Label
+    _infoStyle.render(canvas, 'MAP', Vector2(mx + mapSize / 2 - 9, my + mapSize + 2));
+  }}
+
+  void _drawHeroStats(
+      Canvas canvas, {name}Game g, GameHero h, double w, double sh) {{
+    // Panel sits 90 px above bottom to leave room for the Flutter skill hotbar
+    const panelH = 62.0;
+    final panelTop = sh - panelH - 90;
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, panelTop, w, panelH),
+      Paint()..color = const Color(0xCC040212),
+    );
+    canvas.drawLine(
+      Offset(0, panelTop),
+      Offset(w, panelTop),
+      Paint()..color = const Color(0x88B8860B)..strokeWidth = 1,
+    );
+
+    const pad = 12.0;
+    final bw = w - pad * 2;
+
+    // HP bar
+    final hpR = h.maxHp > 0 ? h.hp / h.maxHp : 1.0;
+    _hpStyle.render(canvas, '♥  HP  ${{h.hp}}/${{h.maxHp}}', Vector2(pad, panelTop + 8));
+    _drawStatBar(canvas, pad, panelTop + 19, bw, 8, hpR,
+        const Color(0xFF1A0000), const Color(0xFFCC0000), const Color(0x44FF0000));
+
+    // MP bar
+    final mpR = g.maxMp > 0 ? g.mp / g.maxMp : 1.0;
+    _mpStyle.render(canvas, '✦  MP  ${{g.mp}}/${{g.maxMp}}', Vector2(pad, panelTop + 30));
+    _drawStatBar(canvas, pad, panelTop + 41, bw, 8, mpR.toDouble(),
+        const Color(0xFF000D1A), const Color(0xFF0044CC), const Color(0x440044FF));
+
+    // XP bar (very bottom of panel)
+    final xpR = h.xpToNextLevel > 0 ? h.xp / h.xpToNextLevel : 1.0;
+    _xpStyle.render(canvas, 'EXP ${{h.xp}}/${{h.xpToNextLevel}}',
+        Vector2(pad, panelTop + 51));
+    _drawStatBar(canvas, pad, panelTop + 60, bw, 5, xpR,
+        const Color(0xFF0D0018), const Color(0xFF7722CC), const Color(0x447722FF));
+  }}
+
+  void _drawStatBar(
+    Canvas canvas,
+    double left,
+    double top,
+    double width,
+    double height,
+    double ratio,
+    Color bg,
+    Color fill,
+    Color glow,
+  ) {{
+    final bgRect = Rect.fromLTWH(left, top, width, height);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(bgRect, const Radius.circular(3)), Paint()..color = bg);
+    if (ratio > 0) {{
+      final filled = Rect.fromLTWH(left, top, width * ratio.clamp(0.0, 1.0), height);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(filled, const Radius.circular(3)), Paint()..color = fill);
+      // Glow
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(filled, const Radius.circular(3)),
+        Paint()..color = glow..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      // Shine
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, top, width * ratio.clamp(0.0, 1.0), height * 0.40),
+            const Radius.circular(3)),
+        Paint()..color = Colors.white.withOpacity(0.14),
+      );
+    }}
   }}
 }}
 """
@@ -1943,6 +2490,7 @@ import 'screens/town_map_screen.dart';
 import 'screens/skills_screen.dart';
 import 'screens/store_screen.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/skill_hotbar.dart';
 
 void main() async {{
   WidgetsFlutterBinding.ensureInitialized();
@@ -1954,6 +2502,12 @@ void main() async {{
   runApp(const {name}App());
 }}
 
+// ── MU Online dark-fantasy colour palette ─────────────────────────────────────
+const _kPanelBg   = Color(0xFF080618);
+const _kNavBg     = Color(0xFF06041A);
+const _kGold      = Color(0xFFD4A017);
+const _kGoldDim   = Color(0xFF443300);
+
 class {name}App extends StatefulWidget {{
   const {name}App({{super.key}});
 
@@ -1964,9 +2518,7 @@ class {name}App extends StatefulWidget {{
 class _{name}AppState extends State<{name}App> {{
   int _selectedIndex = 0;
 
-  /// Stored so _SpeedButtons can read/write speedMultiplier.
   late final {name}Game _game;
-
   late final List<Widget> _screens;
 
   @override
@@ -1974,19 +2526,26 @@ class _{name}AppState extends State<{name}App> {{
     super.initState();
     _game = {name}Game();
     _screens = [
-      // Battle tab: GameWidget with persistent speed-control overlay
-      Stack(
+      // Battle tab: game canvas + skill hotbar + speed selector
+      Column(
         children: [
-          GameWidget<{name}Game>(
-            game: _game,
-            loadingBuilder: (context) => const Center(
-                child: CircularProgressIndicator(color: Colors.amber)),
+          Expanded(
+            child: Stack(
+              children: [
+                GameWidget<{name}Game>(
+                  game: _game,
+                  loadingBuilder: (context) => const Center(
+                      child: CircularProgressIndicator(color: _kGold)),
+                ),
+                Positioned(
+                  top: 56,
+                  left: 6,
+                  child: _SpeedButtons(game: _game),
+                ),
+              ],
+            ),
           ),
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: _SpeedButtons(game: _game),
-          ),
+          SkillHotbar(game: _game),
         ],
       ),
       const DungeonScreen(),
@@ -2004,19 +2563,57 @@ class _{name}AppState extends State<{name}App> {{
     return MaterialApp(
       title: '{title}',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF05030F),
+        colorScheme: const ColorScheme.dark(
+          primary: _kGold,
+          secondary: Color(0xFF3366CC),
+          surface: _kPanelBg,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _kPanelBg,
+          foregroundColor: _kGold,
+          titleTextStyle: TextStyle(
+            color: _kGold,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+          iconTheme: IconThemeData(color: _kGold),
+        ),
+        cardColor: _kPanelBg,
+        dividerColor: Color(0xFF2A1840),
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(color: Color(0xFFCCCCDD)),
+          bodySmall: TextStyle(color: Color(0xFF9999BB)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFF1A1040),
+            foregroundColor: _kGold,
+            side: BorderSide(color: _kGold, width: 1),
+          ),
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: _kNavBg,
+          selectedItemColor: _kGold,
+          unselectedItemColor: Color(0xFF444466),
+          selectedLabelStyle: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 10, color: _kGold),
+          unselectedLabelStyle: TextStyle(fontSize: 9),
+          type: BottomNavigationBarType.fixed,
+          elevation: 8,
+        ),
+      ),
       home: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF05030F),
         body: IndexedStack(
           index: _selectedIndex,
           children: _screens,
         ),
         bottomNavigationBar: BottomNavigationBar(
-          backgroundColor: Colors.black,
-          selectedItemColor: Colors.amber,
-          unselectedItemColor: Colors.white38,
           currentIndex: _selectedIndex,
-          type: BottomNavigationBarType.fixed,
           onTap: (i) => setState(() => _selectedIndex = i),
           items: const [
             BottomNavigationBarItem(
@@ -2042,7 +2639,7 @@ class _{name}AppState extends State<{name}App> {{
   }}
 }}
 
-/// Persistent 1×/2×/5× speed selector shown over the battle screen.
+/// Compact 1×/2×/5× speed selector shown in the top-left of the battle screen.
 class _SpeedButtons extends StatefulWidget {{
   final {name}Game game;
   const _SpeedButtons({{required this.game}});
@@ -2057,8 +2654,9 @@ class _SpeedButtonsState extends State<_SpeedButtons> {{
     final cur = widget.game.speedMultiplier;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xAA06041A),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _kGoldDim, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2067,18 +2665,17 @@ class _SpeedButtonsState extends State<_SpeedButtons> {{
           return GestureDetector(
             onTap: () => setState(() => widget.game.speedMultiplier = s),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
               decoration: BoxDecoration(
-                color: selected ? Colors.amber : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
+                color: selected ? _kGold : Colors.transparent,
+                borderRadius: BorderRadius.circular(5),
               ),
               child: Text(
                 '${{s}}x',
                 style: TextStyle(
-                  color: selected ? Colors.black : Colors.white70,
-                  fontWeight:
-                      selected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 13,
+                  color: selected ? Colors.black : const Color(0xFFAAAAAA),
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 12,
                 ),
               ),
             ),
@@ -3297,4 +3894,402 @@ class AdService {
     );
   }
 }
+"""
+
+
+# ---------------------------------------------------------------------------
+# lib/game/game_background.dart  – animated dungeon atmosphere
+# ---------------------------------------------------------------------------
+
+
+def _game_background_dart(name: str) -> str:
+    return f"""\
+import 'dart:math';
+import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
+import 'game.dart';
+
+/// Animated dark-fantasy dungeon background.
+///
+/// Layers (back to front):
+///   1. Deep-blue/purple sky gradient
+///   2. Perspective stone-floor tiles
+///   3. Dungeon wall edges with subtle glow
+///   4. Pulsing torch-glow on each side
+///   5. Floating magical particles (gold / blue / purple)
+class GameBackground extends PositionComponent {{
+  final {name}Game game;
+
+  static final _rng = Random();
+  final List<_Particle> _particles = [];
+  double _time = 0;
+
+  GameBackground({{required this.game}}) : super(priority: -10);
+
+  @override
+  Future<void> onLoad() async {{
+    size = game.size;
+    for (var i = 0; i < 40; i++) {{
+      _particles.add(_Particle.random(_rng, game.size));
+    }}
+  }}
+
+  @override
+  void update(double dt) {{
+    _time += dt;
+    for (final p in _particles) {{
+      p.y -= p.speed * dt;
+      p.opacity = (sin(_time * p.flicker + p.phase) * 0.35 + 0.65).clamp(0.15, 1.0);
+      if (p.y < -8) {{
+        p.y = game.size.y + 8;
+        p.x = _rng.nextDouble() * game.size.x;
+      }}
+    }}
+  }}
+
+  @override
+  void render(Canvas canvas) {{
+    final w = game.size.x;
+    final h = game.size.y;
+    _drawSky(canvas, w, h);
+    _drawFloor(canvas, w, h);
+    _drawWalls(canvas, w, h);
+    _drawTorchGlow(canvas, w, h);
+    _drawParticles(canvas);
+  }}
+
+  void _drawSky(Canvas canvas, double w, double h) {{
+    // Very dark navy/purple gradient for the dungeon atmosphere
+    final rect = Rect.fromLTWH(0, 0, w, h * 0.62);
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), Paint()..color = const Color(0xFF020208));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF030512),
+            Color(0xFF0C0820),
+            Color(0xFF100A28),
+          ],
+        ).createShader(rect),
+    );
+  }}
+
+  void _drawFloor(Canvas canvas, double w, double h) {{
+    final floorTop = h * 0.55;
+    // Floor base
+    canvas.drawRect(
+      Rect.fromLTWH(0, floorTop, w, h - floorTop),
+      Paint()..color = const Color(0xFF0C0918),
+    );
+    final lp = Paint()
+      ..color = const Color(0xFF2A1848)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+    // Horizontal lines
+    for (int i = 0; i <= 6; i++) {{
+      final y = floorTop + i * ((h - floorTop) / 6);
+      canvas.drawLine(Offset(0, y), Offset(w, y), lp);
+    }}
+    // Perspective lines converging at horizon
+    final horizon = Offset(w / 2, floorTop);
+    for (int i = -6; i <= 6; i++) {{
+      canvas.drawLine(horizon, Offset(w / 2 + i * w / 5.0, h), lp);
+    }}
+    // Vignette on floor
+    canvas.drawRect(
+      Rect.fromLTWH(0, floorTop, w, h - floorTop),
+      Paint()
+        ..shader = RadialGradient(
+          center: Alignment.center,
+          radius: 0.75,
+          colors: const [Color(0x00000000), Color(0xAA000000)],
+        ).createShader(Rect.fromLTWH(0, floorTop, w, h - floorTop)),
+    );
+  }}
+
+  void _drawWalls(Canvas canvas, double w, double h) {{
+    // Narrow wall strips on each side
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, w * 0.07, h * 0.60), Paint()..color = const Color(0xFF070513));
+    canvas.drawRect(
+        Rect.fromLTWH(w * 0.93, 0, w * 0.07, h * 0.60), Paint()..color = const Color(0xFF070513));
+    final ep = Paint()..color = const Color(0xFF3A2060)..strokeWidth = 1.5;
+    canvas.drawLine(Offset(w * 0.07, 0), Offset(w * 0.07, h * 0.60), ep);
+    canvas.drawLine(Offset(w * 0.93, 0), Offset(w * 0.93, h * 0.60), ep);
+  }}
+
+  void _drawTorchGlow(Canvas canvas, double w, double h) {{
+    final intensity = (sin(_time * 2.5) * 0.15 + 0.85).clamp(0.0, 1.0);
+    for (final tx in [w * 0.07, w * 0.93]) {{
+      canvas.drawCircle(
+        Offset(tx, h * 0.27),
+        w * 0.18,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              Color.fromARGB((115 * intensity).round(), 255, 145, 25),
+              const Color(0x00FF8800),
+            ],
+          ).createShader(
+              Rect.fromCircle(center: Offset(tx, h * 0.27), radius: w * 0.18)),
+      );
+    }}
+  }}
+
+  void _drawParticles(Canvas canvas) {{
+    for (final p in _particles) {{
+      final a = (p.opacity * 190).round().clamp(0, 255);
+      canvas.drawCircle(
+        Offset(p.x, p.y),
+        p.size,
+        Paint()..color = Color.fromARGB(a, p.r, p.g, p.b),
+      );
+    }}
+  }}
+}}
+
+class _Particle {{
+  double x, y, size, speed, opacity, flicker, phase;
+  int r, g, b;
+
+  _Particle({{
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.speed,
+    required this.opacity,
+    required this.flicker,
+    required this.phase,
+    required this.r,
+    required this.g,
+    required this.b,
+  }});
+
+  factory _Particle.random(Random rng, Vector2 s) {{
+    final t = rng.nextInt(3);
+    int pr, pg, pb;
+    if (t == 0) {{ pr = 220; pg = 160; pb = 30; }}      // gold
+    else if (t == 1) {{ pr = 60; pg = 100; pb = 220; }} // blue
+    else {{ pr = 140; pg = 60; pb = 220; }}             // purple
+    return _Particle(
+      x: rng.nextDouble() * s.x,
+      y: rng.nextDouble() * s.y,
+      size: rng.nextDouble() * 2.2 + 0.4,
+      speed: rng.nextDouble() * 18 + 6,
+      opacity: rng.nextDouble() * 0.7 + 0.3,
+      flicker: rng.nextDouble() * 3 + 0.8,
+      phase: rng.nextDouble() * 6.28,
+      r: pr, g: pg, b: pb,
+    );
+  }}
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# lib/widgets/skill_hotbar.dart  – MU Online-style skill bar (Flutter widget)
+# ---------------------------------------------------------------------------
+
+
+def _skill_hotbar_widget_dart(name: str) -> str:
+    return f"""\
+import 'package:flutter/material.dart';
+import '../game/game.dart';
+
+/// MU Online-style skill hotbar displayed at the bottom of the battle screen.
+///
+/// Four active skills with MP cost, cooldown overlay, and gold-bordered
+/// dark-blue buttons.  Skills call methods directly on the [game].
+class SkillHotbar extends StatefulWidget {{
+  final {name}Game game;
+  const SkillHotbar({{required this.game, super.key}});
+
+  @override
+  State<SkillHotbar> createState() => _SkillHotbarState();
+}}
+
+// ── Skill definitions ────────────────────────────────────────────────────────
+class _SkillDef {{
+  final int id;
+  final String icon;
+  final String label;
+  final int mpCost;
+  final int cooldownMs; // 0 = no cooldown
+  final Color accentColor;
+  const _SkillDef({{
+    required this.id,
+    required this.icon,
+    required this.label,
+    required this.mpCost,
+    required this.cooldownMs,
+    required this.accentColor,
+  }});
+}}
+
+const _kSkills = [
+  _SkillDef(id: 0, icon: '⚔', label: 'Strike',  mpCost:  0, cooldownMs:    0, accentColor: Color(0xFFCC4400)),
+  _SkillDef(id: 1, icon: '🔥', label: 'Fire',    mpCost: 20, cooldownMs: 4000, accentColor: Color(0xFFFF6600)),
+  _SkillDef(id: 2, icon: '🛡', label: 'Guard',   mpCost: 15, cooldownMs: 6000, accentColor: Color(0xFF0066CC)),
+  _SkillDef(id: 3, icon: '💊', label: 'Heal',    mpCost: 30, cooldownMs: 8000, accentColor: Color(0xFF00AA44)),
+];
+
+class _SkillHotbarState extends State<SkillHotbar>
+    with TickerProviderStateMixin {{
+  {name}Game get game => widget.game;
+  final List<bool> _onCooldown = [false, false, false, false];
+  late final List<AnimationController> _cdCtrl;
+
+  @override
+  void initState() {{
+    super.initState();
+    _cdCtrl = _kSkills
+        .map((s) => AnimationController(
+              vsync: this,
+              duration: Duration(milliseconds: s.cooldownMs > 0 ? s.cooldownMs : 1000),
+            ))
+        .toList();
+  }}
+
+  @override
+  void dispose() {{
+    for (final c in _cdCtrl) c.dispose();
+    super.dispose();
+  }}
+
+  void _use(int id) {{
+    if (game.isGameOver) return;
+    final skill = _kSkills[id];
+    if (_onCooldown[id]) return;
+    if (game.mp < skill.mpCost) return;
+
+    setState(() {{
+      game.mp = (game.mp - skill.mpCost).clamp(0, game.maxMp);
+      if (skill.cooldownMs > 0) _onCooldown[id] = true;
+    }});
+
+    if (skill.cooldownMs > 0) {{
+      _cdCtrl[id].forward(from: 0).whenComplete(() {{
+        if (mounted) setState(() => _onCooldown[id] = false);
+      }});
+    }}
+
+    switch (id) {{
+      case 0:
+        game.onTapSkillAttack();
+      case 1:
+        game.onActivateSkill(SkillType.fireStrike);
+      case 2:
+        game.onActivateSkill(SkillType.guard);
+      case 3:
+        game.onActivateSkill(SkillType.heal);
+    }}
+  }}
+
+  @override
+  Widget build(BuildContext context) {{
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: const BoxDecoration(
+        color: Color(0xEE06041A),
+        border: Border(
+          top: BorderSide(color: Color(0x88B8860B), width: 1),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(4, _buildButton),
+      ),
+    );
+  }}
+
+  Widget _buildButton(int id) {{
+    final skill = _kSkills[id];
+    final onCd = _onCooldown[id];
+    final canAfford = game.mp >= skill.mpCost;
+    final enabled = !onCd && canAfford && !game.isGameOver;
+
+    return GestureDetector(
+      onTap: () => _use(id),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: enabled ? const Color(0xFF10103A) : const Color(0xFF060618),
+          border: Border.all(
+            color: enabled
+                ? skill.accentColor.withOpacity(0.85)
+                : const Color(0xFF333322),
+            width: 1.5,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: skill.accentColor.withOpacity(0.28),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  )
+                ]
+              : null,
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(skill.icon, style: const TextStyle(fontSize: 24)),
+                  Text(
+                    skill.label,
+                    style: TextStyle(
+                      color: enabled ? Colors.white70 : Colors.white24,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (skill.mpCost > 0)
+                    Text(
+                      '${{skill.mpCost}}MP',
+                      style: TextStyle(
+                        color: enabled
+                            ? const Color(0xFF6699FF)
+                            : Colors.white24,
+                        fontSize: 8,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Cooldown overlay: fills top-down and reveals as cooldown expires
+            if (onCd)
+              AnimatedBuilder(
+                animation: _cdCtrl[id],
+                builder: (_, __) {{
+                  final remaining = 1 - _cdCtrl[id].value;
+                  return ClipRect(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      heightFactor: remaining,
+                      child: Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.72),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  );
+                }},
+              ),
+          ],
+        ),
+      ),
+    );
+  }}
+}}
 """
