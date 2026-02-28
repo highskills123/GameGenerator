@@ -7,7 +7,9 @@ the pure-Python logic in ``apply_patches``, ``PatchRule``, and related helpers.
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from workers.validator import (
     PATCH_RULES,
@@ -355,7 +357,6 @@ class TestValidatorWorkerInit(unittest.TestCase):
 class TestValidatorWorkerWriteFiles(unittest.TestCase):
 
     def test_write_files_creates_files(self):
-        import tempfile
         import os
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -371,6 +372,26 @@ class TestValidatorWorkerWriteFiles(unittest.TestCase):
                 self.assertTrue(os.path.exists(full_path), f"Missing: {rel_path}")
                 with open(full_path, encoding="utf-8") as fh:
                     self.assertEqual(fh.read(), content)
+
+
+class TestValidatorWorkerRunNotFound(unittest.TestCase):
+    """_run must not raise when the executable is missing (e.g. Flutter not installed)."""
+
+    def test_run_returns_nonzero_when_executable_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = ValidatorWorker(tmp, {})
+            with patch("subprocess.run", side_effect=FileNotFoundError("flutter")):
+                result = w._run(["flutter", "pub", "get"])
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("flutter", result.stderr)
+
+    def test_validate_returns_false_when_flutter_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = ValidatorWorker(tmp, {})
+            with patch("subprocess.run", side_effect=FileNotFoundError("flutter")):
+                success, log = w.validate()
+            self.assertFalse(success)
+            self.assertIn("flutter", log)
 
 
 if __name__ == "__main__":

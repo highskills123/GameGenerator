@@ -60,9 +60,10 @@ ollama pull qwen2.5-coder:7b
 ollama serve
 
 # 2. Generate the game
-idle-rpg-gen --prompt "A dark fantasy idle RPG in a cursed kingdom" \
-             --out my_game.zip \
-             --ollama-model qwen2.5-coder:7b
+gamegen --prompt "A dark fantasy idle RPG in a cursed kingdom" \
+        --idle-rpg \
+        --out my_game.zip \
+        --ollama-model qwen2.5-coder:7b
 ```
 
 ### Run the generated game on Android
@@ -101,6 +102,10 @@ gamegen --prompt "your game description" --out game.zip [OPTIONS]
 | `--art-style` | `pixel-art` | Art style hint |
 | `--seed` | *(none)* | Integer seed for deterministic offline generation |
 | `--model` | *(none)* | Ollama model for AI-enhanced spec |
+| `--ollama-model` | `qwen2.5-coder:7b` | Ollama model for design doc generation |
+| `--ollama-base-url` | `http://localhost:11434` | Ollama server URL |
+| `--ollama-temperature` | *(none)* | Sampling temperature (0.0–1.0) |
+| `--ollama-timeout` | *(none)* | Request timeout in seconds |
 | `--design-doc` | off | Also generate an Idle RPG design document |
 | `--design-doc-format` | `json` | Design doc format: `json` or `md` |
 | `--validate` | off | Run `flutter pub get` + `flutter analyze` |
@@ -112,36 +117,6 @@ gamegen --prompt "your game description" --out game.zip [OPTIONS]
 gamegen --prompt "space shooter with power-ups" --out shooter.zip
 gamegen --prompt "idle RPG with upgrades" --out rpg.zip --idle-rpg --seed 42
 gamegen --prompt "space shooter" --out game.zip --model qwen2.5-coder:7b --validate
-```
-
-### `idle-rpg-gen` — one-shot Idle RPG generator
-
-```
-idle-rpg-gen --prompt "your concept" --out game.zip [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--prompt` | *(required)* | Natural-language Idle RPG description |
-| `--out` | *(required)* | Output ZIP file path |
-| `--seed` | *(none)* | RNG seed for deterministic offline generation |
-| `--platform` | `android` | `android` or `android+ios` |
-| `--design-doc-format` | `json` | `json` or `md` |
-| `--ollama-model` | `qwen2.5-coder:7b` | Ollama model for AI content |
-| `--ollama-base-url` | `http://localhost:11434` | Ollama server URL |
-| `--ollama-temperature` | *(none)* | Sampling temperature (0.0–1.0) |
-| `--ollama-timeout` | *(none)* | Request timeout in seconds |
-
-```bash
-# Offline (no Ollama) – uses template-based content
-idle-rpg-gen --prompt "A dark fantasy idle RPG" --out game.zip
-
-# Deterministic with a seed
-idle-rpg-gen --prompt "cursed kingdom idle RPG" --out game.zip --seed 42
-
-# AI-enhanced (requires Ollama)
-idle-rpg-gen --prompt "sci-fi space colony RPG" --out game.zip \
-             --ollama-model qwen2.5-coder:7b
 ```
 
 ## HTTP API Server
@@ -259,8 +234,7 @@ ollama pull qwen2.5-coder:7b
 ollama serve
 ```
 
-Then add `--ollama-model qwen2.5-coder:7b` (or `--model qwen2.5-coder:7b` for `gamegen`)
-to any generator command.
+Then add `--ollama-model qwen2.5-coder:7b` to any `gamegen` command.
 
 ## Supported Genres
 

@@ -402,9 +402,18 @@ class ValidatorWorker:
     # ------------------------------------------------------------------
 
     def _run(self, cmd: List[str]) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            cmd,
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            return subprocess.run(
+                cmd,
+                cwd=self.project_dir,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            executable = cmd[0]
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=1,
+                stdout="",
+                stderr=f"{executable}: executable not found. Is Flutter/Dart installed and on PATH?",
+            )
